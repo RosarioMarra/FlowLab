@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#1a237e" />
+<meta name="description" content="FlowLab — Editor di flowchart visuale con esecuzione in tempo reale." />
+
+<!-- ============================================================
+     PWA
+     ============================================================ -->
+<link rel="manifest" href="manifest.json" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="FlowLab" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="msapplication-TileColor" content="#1a237e" />
+<meta name="msapplication-TileImage" content="Immagini/icon-150.png" />
+
+<!-- Favicon completo -->
+<link rel="icon" type="image/png" sizes="70x70"   href="Immagini/icon-70.png" />
+<link rel="icon" type="image/png" sizes="144x144" href="Immagini/icon-144.png" />
+<link rel="icon" type="image/png" sizes="150x150" href="Immagini/icon-150.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="Immagini/icon-192.png" />
+<link rel="icon" type="image/png" sizes="310x310" href="Immagini/icon-310.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="Immagini/icon-512.png" />
+
+<!-- Apple Touch Icons -->
+<link rel="apple-touch-icon" sizes="144x144" href="Immagini/icon-144.png" />
+<link rel="apple-touch-icon" sizes="150x150" href="Immagini/icon-150.png" />
+<link rel="apple-touch-icon" sizes="192x192" href="Immagini/icon-192.png" />
+
+<title>FlowLab</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ============================================================
+     TOPBAR
+     ============================================================ -->
+<header class="topbar">
+  <div class="brand">
+    <img src="Immagini/icon-70.png" alt="FlowLab" class="brand-logo" />
+    <span class="brand-name">FlowLab</span>
+  </div>
+
+  <div class="toolbar" id="toolbar">
+    <button id="btnRun" class="tb tb-primary" title="Esegui">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/></svg>
+      <span class="lbl">Esegui</span>
+    </button>
+    <button id="btnStep" class="tb" title="Passo">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M5 4 L15 12 L5 20 Z M17 4 L19 4 L19 20 L17 20 Z" fill="currentColor"/></svg>
+      <span class="lbl">Passo</span>
+    </button>
+    <button id="btnStop" class="tb tb-danger" title="Ferma" disabled>
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><rect x="6" y="6" width="12" height="12" fill="currentColor"/></svg>
+      <span class="lbl">Stop</span>
+    </button>
+
+    <span class="tb-sep"></span>
+
+    <button id="btnUndo" class="tb tb-icon tb-secondary" title="Annulla">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 5 V1 L6 6 L12 11 V7 C16 7 19 10 19 14 C19 18 16 21 12 21 C8 21 5 18 5 14 H3 C3 19 7 23 12 23 C17 23 21 19 21 14 C21 9 17 5 12 5 Z" fill="currentColor"/></svg>
+    </button>
+    <button id="btnRedo" class="tb tb-icon tb-secondary" title="Ripeti">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 5 V1 L18 6 L12 11 V7 C8 7 5 10 5 14 C5 18 8 21 12 21 C16 21 19 18 19 14 H21 C21 19 17 23 12 23 C7 23 3 19 3 14 C3 9 7 5 12 5 Z" fill="currentColor"/></svg>
+    </button>
+
+    <span class="tb-sep tb-secondary"></span>
+
+    <label class="speed tb-secondary">
+      <span class="speed-lbl">Velocità</span>
+      <input id="speedRange" type="range" min="1" max="5" value="3" />
+      <span id="speedLabel" class="speed-val">Normale</span>
+    </label>
+
+    <span class="tb-sep tb-secondary"></span>
+
+    <button id="btnNew" class="tb tb-secondary" title="Nuovo">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M6 3 H14 L20 9 V21 H4 V3 Z M14 3 V9 H20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="lbl">Nuovo</span>
+    </button>
+    <button id="btnSave" class="tb tb-secondary" title="Salva">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M5 3 H17 L21 7 V21 H3 V3 Z M7 5 V11 H17 V5 Z M7 13 V19 H17 V13 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+      <span class="lbl">Salva</span>
+    </button>
+    <button id="btnLoad" class="tb tb-secondary" title="Apri">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M3 5 H10 L12 7 H21 V19 H3 Z" fill="currentColor"/></svg>
+      <span class="lbl">Apri</span>
+    </button>
+    <button id="btnExportPNG" class="tb tb-secondary" title="Esporta PNG">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M3 4 H21 V20 H3 Z M5 6 V18 H19 V6 Z M8 14 L11 11 L14 15 L16 13 L19 16 H5 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+      <span class="lbl">PNG</span>
+    </button>
+    <button id="btnExportC" class="tb tb-secondary" title="Genera C">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M8 4 H10 V20 H8 Z M6 6 H4 V18 H6 Z M14 4 H16 V20 H14 Z M18 6 V18 H20 V6 Z" fill="currentColor"/></svg>
+      <span class="lbl">C</span>
+    </button>
+    <button id="btnExportPy" class="tb tb-secondary" title="Genera Python">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 3 C7 3 7 6 7 7 V9 H12 V10 H6 C4 10 3 12 3 15 C3 18 5 19 6 19 H8 V16 C8 14 9 13 11 13 H16 C18 13 18 11 18 9 V7 C18 5 17 3 12 3 Z" fill="currentColor"/></svg>
+      <span class="lbl">Py</span>
+    </button>
+    <button id="btnFullscreen" class="tb tb-icon tb-secondary" title="Schermo intero">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M4 4 H9 V6 H6 V9 H4 Z M15 4 H20 V9 H18 V6 H15 Z M4 15 H6 V18 H9 V20 H4 Z M18 15 H20 V20 H15 V18 H18 Z" fill="currentColor"/></svg>
+    </button>
+    <button id="btnReset" class="tb tb-danger tb-icon tb-secondary" title="Reset">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M6 7 H18 L17 21 H7 Z M9 4 H15 V6 H9 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+    </button>
+
+    <input id="fileInput" type="file" accept=".fl,application/json" hidden />
+  </div>
+
+  <button id="btnMenu" class="menu-btn" title="Altro" aria-label="Altro">⋯</button>
+</header>
+
+<!-- ============================================================
+     MENU MOBILE
+     ============================================================ -->
+<div class="mobile-menu" id="mobileMenu" hidden>
+  <div class="mobile-menu-backdrop" id="mobileMenuBackdrop"></div>
+  <div class="mobile-menu-panel" role="menu">
+    <div class="mm-header">Azioni</div>
+    <button class="mm-item" data-action="undo">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M12 5 V1 L6 6 L12 11 V7 C16 7 19 10 19 14 C19 18 16 21 12 21 C8 21 5 18 5 14 H3 C3 19 7 23 12 23 C17 23 21 19 21 14 C21 9 17 5 12 5 Z" fill="currentColor"/></svg>
+      <span>Annulla</span>
+    </button>
+    <button class="mm-item" data-action="redo">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M12 5 V1 L18 6 L12 11 V7 C8 7 5 10 5 14 C5 18 8 21 12 21 C16 21 19 18 19 14 H21 C21 19 17 23 12 23 C7 23 3 19 3 14 C3 9 7 5 12 5 Z" fill="currentColor"/></svg>
+      <span>Ripeti</span>
+    </button>
+    <div class="mm-divider"></div>
+    <button class="mm-item" data-action="new">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M6 3 H14 L20 9 V21 H4 V3 Z M14 3 V9 H20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Nuovo</span>
+    </button>
+    <button class="mm-item" data-action="save">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M5 3 H17 L21 7 V21 H3 V3 Z M7 5 V11 H17 V5 Z M7 13 V19 H17 V13 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+      <span>Salva</span>
+    </button>
+    <button class="mm-item" data-action="load">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M3 5 H10 L12 7 H21 V19 H3 Z" fill="currentColor"/></svg>
+      <span>Apri</span>
+    </button>
+    <div class="mm-divider"></div>
+    <button class="mm-item" data-action="exportPNG">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M3 4 H21 V20 H3 Z M5 6 V18 H19 V6 Z M8 14 L11 11 L14 15 L16 13 L19 16 H5 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+      <span>Esporta PNG</span>
+    </button>
+    <button class="mm-item" data-action="exportC">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M8 4 H10 V20 H8 Z M6 6 H4 V18 H6 Z M14 4 H16 V20 H14 Z M18 6 V18 H20 V6 Z" fill="currentColor"/></svg>
+      <span>Genera C</span>
+    </button>
+    <button class="mm-item" data-action="exportPy">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M12 3 C7 3 7 6 7 7 V9 H12 V10 H6 C4 10 3 12 3 15 C3 18 5 19 6 19 H8 V16 C8 14 9 13 11 13 H16 C18 13 18 11 18 9 V7 C18 5 17 3 12 3 Z" fill="currentColor"/></svg>
+      <span>Genera Python</span>
+    </button>
+    <div class="mm-divider"></div>
+    <button class="mm-item" data-action="fullscreen">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 4 H9 V6 H6 V9 H4 Z M15 4 H20 V9 H18 V6 H15 Z M4 15 H6 V18 H9 V20 H4 Z M18 15 H20 V20 H15 V18 H18 Z" fill="currentColor"/></svg>
+      <span>Schermo intero</span>
+    </button>
+    <button class="mm-item mm-item-danger" data-action="reset">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M6 7 H18 L17 21 H7 Z M9 4 H15 V6 H9 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+      <span>Reset progetto</span>
+    </button>
+    <div class="mm-divider"></div>
+    <div class="mm-speed">
+      <label>Velocità</label>
+      <input id="mmSpeed" type="range" min="1" max="5" value="3" />
+      <span id="mmSpeedLabel">Normale</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     LAYOUT
+     ============================================================ -->
+<main class="layout">
+
+  <aside class="panel panel-left" id="panelLeft">
+    <div class="panel-header">
+      <span class="panel-title">BLOCCHI</span>
+      <button class="panel-toggle" data-close="panelLeft" title="Chiudi">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="panel-body">
+      <div class="cat"><div class="cat-title">Base</div><div class="cat-items">
+        <button class="card" data-add="start"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="14" fill="#E8D5F5" stroke="#9370DB" stroke-width="2"/></svg><span>Start</span></button>
+        <button class="card" data-add="end"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="14" fill="#E8D5F5" stroke="#9370DB" stroke-width="2"/></svg><span>End</span></button>
+      </div></div>
+
+      <div class="cat"><div class="cat-title">Interazione</div><div class="cat-items">
+        <button class="card" data-add="input"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 58,2 50,30 2,30" fill="#D6E8F5" stroke="#1976D2" stroke-width="2"/></svg><span>Input</span></button>
+        <button class="card" data-add="output"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 58,2 50,30 2,30" fill="#D4F1D4" stroke="#2E7D32" stroke-width="2"/></svg><span>Output</span></button>
+      </div></div>
+
+      <div class="cat"><div class="cat-title">Variabili</div><div class="cat-items">
+        <button class="card" data-add="declare"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="2" fill="#FFF9C4" stroke="#B8860B" stroke-width="2"/><line x1="14" y1="2" x2="14" y2="30" stroke="#B8860B" stroke-width="1.5"/></svg><span>Dichiara</span></button>
+        <button class="card" data-add="assign"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="3" fill="#FFF9C4" stroke="#F9A825" stroke-width="2"/></svg><span>Assegna</span></button>
+      </div></div>
+
+      <div class="cat"><div class="cat-title">Selezione</div><div class="cat-items">
+        <button class="card" data-add="if"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="30,2 58,16 30,30 2,16" fill="#FFD9E0" stroke="#C2185B" stroke-width="2"/></svg><span>If</span></button>
+        <button class="card" data-add="else"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="8" width="56" height="16" rx="2" fill="#FFE8EE" stroke="#C2185B" stroke-width="2"/></svg><span>Else</span></button>
+      </div></div>
+
+      <div class="cat"><div class="cat-title">Cicli</div><div class="cat-items">
+        <button class="card" data-add="for"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" fill="#FFE4C4" stroke="#E65100" stroke-width="2"/></svg><span>For</span></button>
+        <button class="card" data-add="while"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" fill="#FFE4C4" stroke="#E65100" stroke-width="2"/></svg><span>While</span></button>
+        <button class="card" data-add="dowhile"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" fill="#FFE4C4" stroke="#E65100" stroke-width="2"/></svg><span>Do-While</span></button>
+        <button class="card" data-add="break"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" fill="#FFE4C4" stroke="#E65100" stroke-width="2"/></svg><span>Break</span></button>
+      </div></div>
+
+      <div class="cat"><div class="cat-title">Utility</div><div class="cat-items">
+        <button class="card" data-add="comment"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="3" fill="#EEEEEE" stroke="#757575" stroke-width="2" stroke-dasharray="4 3"/></svg><span>Commento</span></button>
+      </div></div>
+
+      <div class="hint">
+        <b>Sintassi FlowLab</b><br />
+        <code>Output "Ciao"</code><br />
+        <code>Output "Il valore è " &amp; a</code><br />
+        <code>Input nome</code><br />
+        <code>If x &gt; 5 AND x &lt; 10</code>
+      </div>
+    </div>
+  </aside>
+
+  <section class="canvas-area">
+    <div class="canvas-toolbar">
+      <span class="ct-label">Canvas</span>
+      <span class="ct-sep"></span>
+      <button class="ct-btn" id="ctZoomOut" title="Zoom −">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M5 11 H19 V13 H5 Z" fill="currentColor"/></svg>
+      </button>
+      <span class="ct-zoom" id="ctZoom">100%</span>
+      <button class="ct-btn" id="ctZoomIn" title="Zoom +">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M11 5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z" fill="currentColor"/></svg>
+      </button>
+      <button class="ct-btn" id="ctReset" title="Reset zoom">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M12 3 L20 10 V20 H14 V14 H10 V20 H4 V10 Z" fill="currentColor"/></svg>
+      </button>
+      <span class="ct-sep"></span>
+      <span class="status" id="statusText">Pronto</span>
+      <span class="steps" id="statusSteps">0 step</span>
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap">
+      <div class="canvas" id="canvas">
+        <svg class="links" id="links" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="nodes" id="nodes"></div>
+        <div class="overlay" id="overlay"></div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel panel-right" id="panelRight">
+    <div class="panel-header">
+      <span class="panel-title">VARIABILI</span>
+      <button class="panel-toggle" data-close="panelRight" title="Chiudi">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="panel-body vars-body">
+      <div id="varList"><p class="empty">Nessuna variabile</p></div>
+      <button class="add-var" id="btnAddVar">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M11 5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z" fill="currentColor"/></svg>
+        Nuova variabile
+      </button>
+    </div>
+
+    <div class="panel-header console-header">
+      <span class="panel-title">CONSOLE</span>
+      <button class="panel-toggle" id="btnClearConsole" title="Pulisci">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M6 7 H18 L17 21 H7 Z M9 4 H15 V6 H9 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+      </button>
+    </div>
+    <div class="console" id="console"><div class="line sys">[FlowLab] Pronto. Premi Esegui.</div></div>
+  </aside>
+
+  <nav class="mobile-tabs">
+    <button class="mtab" data-toggle="panelLeft">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 5 H20 V8 H4 Z M4 11 H20 V14 H4 Z M4 17 H20 V20 H4 Z" fill="currentColor"/></svg>
+      <span>Blocchi</span>
+    </button>
+    <button class="mtab mtab-run" id="mtabRun">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/></svg>
+      <span>Esegui</span>
+    </button>
+    <button class="mtab" data-toggle="panelRight">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 4 H20 V20 H4 Z M6 6 V18 H18 V6 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+      <span>Console</span>
+    </button>
+  </nav>
+</main>
+
+<!-- PICKER -->
+<div class="modal-overlay" id="picker" hidden>
+  <div class="modal picker">
+    <div class="modal-header">
+      <span>Aggiungi blocco</span>
+      <button class="modal-close" id="pickerClose">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="picker-body">
+      <div class="picker-cat"><div class="picker-cat-title">Interazione</div><div class="picker-cat-items"><button class="pick" data-add="input">Input</button><button class="pick" data-add="output">Output</button></div></div>
+      <div class="picker-cat"><div class="picker-cat-title">Variabili</div><div class="picker-cat-items"><button class="pick" data-add="declare">Dichiara</button><button class="pick" data-add="assign">Assegna</button></div></div>
+      <div class="picker-cat"><div class="picker-cat-title">Selezione</div><div class="picker-cat-items"><button class="pick" data-add="if">If</button><button class="pick" data-add="else">Else</button></div></div>
+      <div class="picker-cat"><div class="picker-cat-title">Cicli</div><div class="picker-cat-items"><button class="pick" data-add="for">For</button><button class="pick" data-add="while">While</button><button class="pick" data-add="dowhile">Do-While</button><button class="pick" data-add="break">Break</button></div></div>
+      <div class="picker-cat"><div class="picker-cat-title">Utility</div><div class="picker-cat-items"><button class="pick" data-add="comment">Commento</button></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- TYPE MODAL -->
+<div class="modal-overlay" id="typeModal" hidden>
+  <div class="modal type-modal">
+    <div class="modal-header">
+      <span>Scegli il tipo</span>
+      <button class="modal-close" id="typeClose">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="modal-body type-modal-body">
+      <p class="type-hint">Seleziona il tipo della variabile da dichiarare:</p>
+      <div class="type-grid">
+        <button class="type-btn" data-type="Integer"><strong>Integer</strong><span>Numeri interi</span></button>
+        <button class="type-btn" data-type="Real"><strong>Real</strong><span>Numeri decimali</span></button>
+        <button class="type-btn" data-type="String"><strong>String</strong><span>Testo</span></button>
+        <button class="type-btn" data-type="Boolean"><strong>Boolean</strong><span>true / false</span></button>
+        <button class="type-btn" data-type="Character"><strong>Character</strong><span>Singolo carattere</span></button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" id="typeCancel">Annulla</button>
+    </div>
+  </div>
+</div>
+
+<!-- FOR MODAL -->
+<div class="modal-overlay" id="forModal" hidden>
+  <div class="modal for-modal">
+    <div class="modal-header">
+      <span>Struttura ripetitiva 'Per'</span>
+      <button class="modal-close" id="forClose">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="modal-body for-modal-body">
+      <p class="for-hint">La struttura ripetitiva 'Per' incrementa una variabile considerando un intervallo di valori (ciclo enumerativo).</p>
+      <label class="for-label">Variabile:</label>
+      <input id="forVar" type="text" placeholder="i" autocomplete="off" spellcheck="false" />
+      <div class="for-row">
+        <div class="for-col">
+          <label class="for-label">Valore iniziale:</label>
+          <input id="forStart" type="text" placeholder="0" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="for-col">
+          <label class="for-label">Valore finale:</label>
+          <input id="forEnd" type="text" placeholder="10" autocomplete="off" spellcheck="false" />
+        </div>
+      </div>
+      <div class="for-row">
+        <div class="for-col">
+          <label class="for-label">Direzione:</label>
+          <div class="for-radio-group">
+            <label class="for-radio"><input type="radio" name="forDirection" value="inc" checked /><span>Incrementa</span></label>
+            <label class="for-radio"><input type="radio" name="forDirection" value="dec" /><span>Decrementa</span></label>
+          </div>
+        </div>
+        <div class="for-col">
+          <label class="for-label">Valore passo:</label>
+          <input id="forStep" type="number" value="1" min="1" step="1" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ok" id="forOk">OK</button>
+      <button class="btn btn-cancel" id="forCancel">Annulla</button>
+    </div>
+  </div>
+</div>
+
+<!-- VAR MODAL -->
+<div class="modal-overlay" id="varModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <span>Nuova variabile</span>
+      <button class="modal-close" id="varClose">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <label>Nome</label>
+      <input id="varName" type="text" placeholder="es. contatore" autocomplete="off" />
+      <label>Tipo</label>
+      <select id="varType">
+        <option value="Integer">Integer</option>
+        <option value="Real">Real</option>
+        <option value="String">String</option>
+        <option value="Boolean">Boolean</option>
+        <option value="Character">Character</option>
+      </select>
+      <label>Valore iniziale</label>
+      <input id="varValue" type="text" placeholder="0" autocomplete="off" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" id="varCancel">Annulla</button>
+      <button class="btn btn-ok" id="varOk">Crea</button>
+    </div>
+  </div>
+</div>
+
+<!-- CODE MODAL -->
+<div class="modal-overlay" id="cModal" hidden>
+  <div class="modal wide">
+    <div class="modal-header">
+      <span>Codice generato</span>
+      <button class="modal-close" id="cClose">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <pre id="cOutput" class="code-preview"></pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" id="cCopy">Copia</button>
+      <button class="btn btn-cancel" id="cDownload">Scarica</button>
+      <button class="btn btn-ok" id="cCloseBtn">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

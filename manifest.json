@@ -1,0 +1,74 @@
+{
+  "name": "FlowLab — Editor Visuale",
+  "short_name": "FlowLab",
+  "description": "Editor di flowchart visuale con esecuzione in tempo reale, variabili tipizzate, salvataggio su file .fl ed esportazione in C e Python.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#1a237e",
+  "lang": "it",
+  "dir": "ltr",
+  "categories": ["education", "productivity", "developer"],
+  "icons": [
+    {
+      "src": "Immagini/icon-70.png",
+      "sizes": "70x70",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "Immagini/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "Immagini/icon-150.png",
+      "sizes": "150x150",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "Immagini/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "Immagini/icon-310.png",
+      "sizes": "310x310",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "Immagini/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "Immagini/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nuovo progetto",
+      "short_name": "Nuovo",
+      "description": "Crea un nuovo flowchart",
+      "url": "./index.html?action=new",
+      "icons": [
+        {
+          "src": "Immagini/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}
