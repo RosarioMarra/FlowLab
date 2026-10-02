@@ -17,44 +17,44 @@ Un ambiente di programmazione visuale ispirato a Flowgorithm, completamente risc
 
 ---
 
-## 📖 Indice
+## Indice
 
-- [Cos'è FlowLab](#-cosè-flowlab)
-- [Funzionalità](#-funzionalità)
-- [Screenshot](#-screenshot)
-- [Demo](#-demo)
-- [Installazione](#-installazione)
-- [Come si usa](#-come-si-usa)
-- [Sintassi del linguaggio](#-sintassi-del-linguaggio)
-- [Blocchi disponibili](#-blocchi-disponibili)
-- [Formato file `.fl`](#-formato-file-fl)
-- [Generazione di codice](#-generazione-di-codice)
-- [Struttura del progetto](#-struttura-del-progetto)
-- [Architettura tecnica](#-architettura-tecnica)
-- [Compatibilità](#-compatibilità)
-- [Roadmap](#-roadmap)
-- [Contribuire](#-contribuire)
-- [Credits](#-credits)
+- [Cos'è FlowLab](#cosè-flowlab)
+- [Funzionalità](#funzionalità)
+- [Screenshot](#screenshot)
+- [Demo](#demo)
+- [Installazione](#installazione)
+- [Come si usa](#come-si-usa)
+- [Sintassi del linguaggio](#sintassi-del-linguaggio)
+- [Blocchi disponibili](#blocchi-disponibili)
+- [Formato file `.fl`](#formato-file-fl)
+- [Generazione di codice](#generazione-di-codice)
+- [Struttura del progetto](#struttura-del-progetto)
+- [Architettura tecnica](#architettura-tecnica)
+- [Compatibilità](#compatibilità)
+- [Roadmap](#roadmap)
+- [Contribuire](#contribuire)
+- [Credits](#credits)
 
 ---
 
-## 🎯 Cos'è FlowLab
+## Cos'è FlowLab
 
 **FlowLab** è un'applicazione web progressiva (PWA) che permette di creare, modificare ed eseguire **diagrammi di flusso** direttamente dal browser, senza installare nulla.
 
 È pensato per:
 
-- 🎓 **Studenti** che imparano i fondamenti della programmazione (variabili, cicli, condizioni, funzioni)
-- 👨‍🏫 **Insegnanti** che vogliono uno strumento semplice per spiegare gli algoritmi
-- 💡 **Chiunque** voglia visualizzare la logica di un programma prima di scriverlo in codice
+- **Studenti** che imparano i fondamenti della programmazione (variabili, cicli, condizioni, funzioni)
+- **Insegnanti** che vogliono uno strumento semplice per spiegare gli algoritmi
+- **Chiunque** voglia visualizzare la logica di un programma prima di scriverlo in codice
 
 A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop, tablet e smartphone**, anche **senza connessione internet** dopo il primo caricamento.
 
 ---
 
-## ✨ Funzionalità
+## Funzionalità
 
-### 🎨 Editor visuale
+### Editor visuale
 - **Drag & drop** fluido dei blocchi sul canvas
 - **Layout automatico verticale** con collegamenti ortogonali (angoli a 90°)
 - **Forme elementari** per ogni tipo di blocco: ovale, rettangolo, rombo, parallelogramma, esagono
@@ -63,7 +63,7 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 - **Zoom centrato** con pulsanti `+`/`−` e pinch-to-zoom a due dita su mobile
 - **Indentazione visiva** per rami e cicli
 
-### 🧩 Blocchi supportati
+### Blocchi supportati
 - `Start` / `End` — Inizio e fine (obbligatori, non eliminabili)
 - `Dichiarazione` — Con popup di scelta tipo (Integer, Real, String, Boolean, Character)
 - `Input` / `Output` — Interazione con l'utente
@@ -73,20 +73,20 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 - `Break` — Interruzione ciclo
 - `Commento` — Annotazioni
 
-### 🔀 Rami e cicli
+### Rami e cicli
 - **Rami Vero/Falso** con colori distintivi (verde/rosso)
 - **Auto-creazione del ramo Else** quando serve
 - **Merge automatico** al termine di ogni ramo
 - **Loop-back** visivamente collegato al vertice del blocco ciclo
 - **Pulsanti `+`** su ogni collegamento per inserire nuovi blocchi
 
-### 🧮 Variabili e tipi
+### Variabili e tipi
 - 5 tipi di dato: `Integer`, `Real`, `String`, `Boolean`, `Character`
 - Pannello variabili con valori in tempo reale durante l'esecuzione
 - Coercizione automatica dei tipi
 - Rinomina automatica quando cambi il nome nel blocco `Dichiarazione`
 
-### ▶️ Esecuzione
+### Esecuzione
 - **Esegui tutto** con velocità regolabile (5 livelli: da Lenta a Turbo)
 - **Passo passo** per il debug
 - **Stop** per interrompere
@@ -94,27 +94,27 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 - **Console integrata** stile chat con input/output colorati
 - **Validazione** di variabili non definite, sintassi errata, indici fuori range
 
-### 💾 Salvataggio e persistenza
+### Salvataggio e persistenza
 - **Auto-salvataggio** su `localStorage` ad ogni modifica
 - **Salva/Apri file `.fl`** con File System Access API (salva direttamente, senza riaprire il selettore la seconda volta)
 - **Esporta PNG** dell'area di lavoro
 - **Import/Export JSON** del progetto
 - **Indicatore "modifiche non salvate"** con pallino rosso
 
-### 🧬 Generazione di codice
+### Generazione di codice
 - **Codice C** completo con `#include`, `scanf`, `printf`, tipi corretti
 - **Codice Python 3** con `input()`, `print()`, `range()`, gestione tipi
 - Pulsante **Copia** e **Scarica** per ogni linguaggio
 
-### 📱 PWA e mobile
+### PWA e mobile
 - **Installabile** su Android, iOS, Windows, macOS, Linux
 - **Funziona offline** dopo il primo caricamento (Service Worker)
 - **Responsive** completo: adattamento automatico da desktop a smartphone
-- **Menu mobile ⋯** con tutte le azioni raggruppate
+- **Menu mobile** con tutte le azioni raggruppate
 - **Pannelli drawer** (Blocchi e Console) esclusivi su mobile
 - **Touch-friendly**: pulsanti ≥ 40px, gesture pinch-zoom
 
-### 🔧 Extra
+### Extra
 - **Undo/Redo** con storia di 60 stati
 - **Scorciatoie da tastiera** (Ctrl+S, Ctrl+Z, Ctrl+Y, Ctrl+N, Ctrl+Enter, F10)
 - **Modalità schermo intero**
@@ -123,7 +123,7 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 
 ---
 
-## 📸 Screenshot
+## Screenshot
 
 > _Sostituisci con le tue immagini reali_
 
@@ -133,7 +133,7 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 
 ---
 
-## 🌐 Demo
+## Demo
 
 > **Demo live**: [https://rosariomarra.github.io/FlowLab/](https://rosariomarra.github.io/FlowLab/)
 
@@ -141,11 +141,11 @@ _Se hai pubblicato l'app su GitHub Pages, aggiungi il link qui._
 
 ---
 
-## 🚀 Installazione
+## Installazione
 
 ### Opzione 1 — Usa l'app online
 
-Apri il link della [demo live](#-demo). Non serve installare nulla.
+Apri il link della [demo live](#demo). Non serve installare nulla.
 
 ### Opzione 2 — Installa come PWA
 
@@ -176,11 +176,11 @@ npx serve
 # http://localhost:8000
 ```
 
-> ⚠️ Il Service Worker richiede **HTTPS** o **localhost**. Non funziona aprendo `index.html` direttamente con doppio click.
+> Il Service Worker richiede **HTTPS** o **localhost**. Non funziona aprendo `index.html` direttamente con doppio click.
 
 ---
 
-## 🎓 Come si usa
+## Come si usa
 
 ### 1. Crea il tuo primo flowchart
 
@@ -192,9 +192,9 @@ npx serve
 
 ### 2. Esegui il programma
 
-- **▶ Esegui** — esegue tutto dall'inizio alla fine
-- **⏭ Passo** — esegue un blocco alla volta (debug)
-- **⏹ Stop** — interrompe l'esecuzione
+- **Esegui** — esegue tutto dall'inizio alla fine
+- **Passo** — esegue un blocco alla volta (debug)
+- **Stop** — interrompe l'esecuzione
 - **Velocità** — regola la velocità da Lenta a Turbo
 
 ### 3. Esporta
@@ -212,7 +212,7 @@ npx serve
 
 ---
 
-## 📘 Sintassi del linguaggio
+## Sintassi del linguaggio
 
 FlowLab usa una sintassi **semplice e leggibile**, ispirata a Flowgorithm.
 
@@ -297,7 +297,7 @@ While numero < 0
 
 ---
 
-## 🧩 Blocchi disponibili
+## Blocchi disponibili
 
 | Categoria | Blocco | Forma | Descrizione |
 |---|---|---|---|
@@ -317,7 +317,7 @@ While numero < 0
 
 ---
 
-## 📁 Formato file `.fl`
+## Formato file `.fl`
 
 I progetti FlowLab sono salvati in **JSON** con estensione `.fl`:
 
@@ -351,7 +351,7 @@ I progetti FlowLab sono salvati in **JSON** con estensione `.fl`:
 
 ---
 
-## 🧬 Generazione di codice
+## Generazione di codice
 
 ### Esempio FlowLab
 
@@ -404,7 +404,7 @@ if __name__ == "__main__":
 
 ---
 
-## 📂 Struttura del progetto
+## Struttura del progetto
 
 ```
 FlowLab/
@@ -425,7 +425,7 @@ FlowLab/
 
 ---
 
-## 🏗️ Architettura tecnica
+## Architettura tecnica
 
 ### Stack
 
@@ -467,22 +467,22 @@ Console + highlight in tempo reale
 
 ---
 
-## 🌐 Compatibilità
+## Compatibilità
 
 | Browser | Versione minima | Note |
 |---|---|---|
-| **Chrome** | 90+ | ✅ Supporto completo (File System Access API) |
-| **Edge** | 90+ | ✅ Supporto completo |
-| **Firefox** | 90+ | ⚠️ Manca File System Access API (usa download) |
-| **Safari** | 15+ | ⚠️ Manca File System Access API (usa download) |
-| **Chrome Android** | 90+ | ✅ Installabile |
-| **Safari iOS** | 15+ | ✅ Installabile come PWA |
+| **Chrome** | 90+ | Supporto completo (File System Access API) |
+| **Edge** | 90+ | Supporto completo |
+| **Firefox** | 90+ | Manca File System Access API (usa download) |
+| **Safari** | 15+ | Manca File System Access API (usa download) |
+| **Chrome Android** | 90+ | Installabile |
+| **Safari iOS** | 15+ | Installabile come PWA |
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
-### ✅ Fatto
+### Fatto
 - [x] Editor visuale con drag & drop
 - [x] Tutti i blocchi principali
 - [x] Esecuzione con passi e velocità
@@ -495,7 +495,7 @@ Console + highlight in tempo reale
 - [x] Zoom centrato + pinch
 - [x] Pannelli esclusivi mobile
 
-### 🚧 In corso / Prossimamente
+### In corso / Prossimamente
 - [ ] Array monodimensionali
 - [ ] Funzioni definite dall'utente
 - [ ] Passaggio parametri per valore/riferimento (`&var`)
@@ -505,7 +505,7 @@ Console + highlight in tempo reale
 - [ ] Temi chiaro/scuro/neon selezionabili
 - [ ] Esportazione in Java / JavaScript
 
-### 💡 Idee future
+### Idee future
 - [ ] Debugger con breakpoint
 - [ ] Timeline dell'esecuzione (step-back)
 - [ ] Grafici e chart in output
@@ -514,9 +514,9 @@ Console + highlight in tempo reale
 
 ---
 
-## 🤝 Contribuire
+## Contribuire
 
-I contributi sono **benvenuti**! Se vuoi migliorare FlowLab:
+I contributi sono **benvenuti**. Se vuoi migliorare FlowLab:
 
 1. Fai un **fork** del progetto
 2. Crea un **branch** per la tua feature: `git checkout -b feature/nome-feature`
@@ -542,7 +542,7 @@ Apri una [issue](https://github.com/rosariomarra/FlowLab/issues) con:
 
 ---
 
-## 🙏 Credits
+## Credits
 
 - **Sviluppato da** [Rosario Marra](https://github.com/rosariomarra)
 - **Ispirato a** [Flowgorithm](http://www.flowgorithm.org/) di Devin Cook — il pioniere dei flowchart educativi
@@ -554,12 +554,12 @@ Apri una [issue](https://github.com/rosariomarra/FlowLab/issues) con:
 
 <div align="center">
 
-**Se ti piace FlowLab, lascia una ⭐ su GitHub!**
+**Se ti piace FlowLab, lascia una stella su GitHub**
 
-[🐛 Segnala un bug](https://github.com/rosariomarra/FlowLab/issues) ·
-[💡 Proponi una feature](https://github.com/rosariomarra/FlowLab/issues) ·
-[📖 Leggi la documentazione](https://github.com/rosariomarra/FlowLab/wiki)
+[Segnala un bug](https://github.com/rosariomarra/FlowLab/issues) ·
+[Proponi una feature](https://github.com/rosariomarra/FlowLab/issues) ·
+[Leggi la documentazione](https://github.com/rosariomarra/FlowLab/wiki)
 
-Made with ❤️ in Italy by **Rosario Marra**
+Made with love in Italy by **Rosario Marra**
 
 </div>
