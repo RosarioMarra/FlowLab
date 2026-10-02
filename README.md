@@ -125,7 +125,7 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 
 ## Screenshot
 
-> _Sostituisci con le tue immagini reali_
+
 
 | Desktop | Mobile |
 |---|---|
@@ -137,7 +137,7 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 
 > **Demo live**: [https://rosariomarra.github.io/FlowLab/](https://rosariomarra.github.io/FlowLab/)
 
-_Se hai pubblicato l'app su GitHub Pages, aggiungi il link qui._
+
 
 ---
 
