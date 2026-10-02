@@ -1,26 +1,24 @@
 /* ============================================================
-   FlowLab v23 — Logica applicazione completa
-   Novità:
-   - Zoom centrato (mantiene il punto centrale fisso)
-   - Pinch-to-zoom con due dita su mobile
-   - Pannelli esclusivi su mobile (uno alla volta)
+   FlowLab v24 — Logica completa
+   Fix:
+   - Centratura basata sul bounding box reale del contenuto
+   - START/END non trascinabili (restano ancorati al flow)
+   - Zoom rotellina fluido + pulsante "Adatta alla vista"
+   - Mobile: barra controlli Esegui/Passo/Stop al centro
    ============================================================ */
 'use strict';
 
 const APP = {
   name: 'FlowLab',
-  version: '23.0',
-  storageKey: 'flowlab.project.v23',
+  version: '24.0',
+  storageKey: 'flowlab.project.v24',
   maxSteps: 5000,
   maxConsole: 800,
 };
 
-/* ============================================================
-   DEFINIZIONE BLOCCHI
-   ============================================================ */
 const DEFS = {
-  start:   { label:'Start',    shape:'oval',          color:'#9370DB', fill:'#E8D5F5', editable:false, deletable:false },
-  end:     { label:'End',      shape:'oval',          color:'#9370DB', fill:'#E8D5F5', editable:false, deletable:false },
+  start:   { label:'Start',    shape:'oval',          color:'#9370DB', fill:'#E8D5F5', editable:false, deletable:false, draggable:false },
+  end:     { label:'End',      shape:'oval',          color:'#9370DB', fill:'#E8D5F5', editable:false, deletable:false, draggable:false },
   input:   { label:'Input',    shape:'parallelogram', color:'#1976D2', fill:'#D6E8F5', editable:true,  deletable:true,  ph:'nome' },
   output:  { label:'Output',   shape:'parallelogram', color:'#2E7D32', fill:'#D4F1D4', editable:true,  deletable:true,  ph:'"Ciao" & nome' },
   declare: { label:'Dichiara', shape:'rect-dashed',   color:'#B8860B', fill:'#FFF9C4', editable:true,  deletable:true,  ph:'nome' },
@@ -45,8 +43,11 @@ const VGAP = 55;
 const BRANCH_OFFSET = 220;
 const MIN_NODE_W = 200;
 const MAX_NODE_W = 380;
-const MIN_ZOOM = 0.4;
+const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 2.5;
+
+const TOP_ANCHOR_Y = 24;
+const PAN_MARGIN = 80;
 
 const STR_PRE = '\uE000';
 const STR_SUF = '\uE001';
@@ -55,9 +56,6 @@ const HANDLE_DB = 'flowlab-handles';
 const HANDLE_STORE = 'handles';
 const FILE_HANDLE_KEY = 'flowlab-file';
 
-/* ============================================================
-   STATO GLOBALE
-   ============================================================ */
 const state = {
   nodes: [],
   variables: {},
@@ -68,7 +66,21 @@ const state = {
   paused: false,
   currentIndex: -1,
   totalSteps: 0,
+
+  /* Viewport */
   zoom: 1,
+  panX: 0,
+  panY: 0,
+  natW: 800,
+  natH: 600,
+  hasCentered: false,
+
+  /* Bounding box reale del contenuto (world coords) */
+  contentMinX: 0,
+  contentMaxX: 0,
+  contentMinY: 0,
+  contentMaxY: 0,
+
   selectedId: null,
   insertAt: -1,
   insertMode: null,
@@ -80,29 +92,24 @@ const state = {
   editingForId: null,
 };
 
-/* ============================================================
-   DOM
-   ============================================================ */
 const $ = id => document.getElementById(id);
-const canvasEl   = $('canvas');
-const canvasWrap = $('canvasWrap');
-const nodesEl    = $('nodes');
-const linksEl    = $('links');
-const overlayEl  = $('overlay');
-const varListEl  = $('varList');
-const consoleEl  = $('console');
-const statusText = $('statusText');
-const statusSteps= $('statusSteps');
-const pickerEl   = $('picker');
-const toastEl    = $('toast');
-const varModal   = $('varModal');
-const cModal     = $('cModal');
-const typeModal  = $('typeModal');
-const forModal   = $('forModal');
+const canvasEl        = $('canvas');
+const canvasWrap      = $('canvasWrap');
+const canvasContentEl = $('canvasContent');
+const nodesEl         = $('nodes');
+const linksEl         = $('links');
+const overlayEl       = $('overlay');
+const varListEl       = $('varList');
+const consoleEl       = $('console');
+const statusText      = $('statusText');
+const statusSteps     = $('statusSteps');
+const pickerEl        = $('picker');
+const toastEl         = $('toast');
+const varModal        = $('varModal');
+const cModal          = $('cModal');
+const typeModal       = $('typeModal');
+const forModal        = $('forModal');
 
-/* ============================================================
-   UTILS
-   ============================================================ */
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -115,44 +122,31 @@ function toast(msg, ms = 2000) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toastEl.hidden = true; }, ms);
 }
-function haptic() {
-  if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} }
-}
-function svgClose() {
-  return '<svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>';
-}
-function svgPlus() {
-  return '<svg viewBox="0 0 24 24" class="ico"><path d="M11 5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z" fill="currentColor"/></svg>';
-}
+function haptic() { if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} } }
+function svgClose() { return '<svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>'; }
+function svgPlus() { return '<svg viewBox="0 0 24 24" class="ico"><path d="M11 5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z" fill="currentColor"/></svg>'; }
 
 function clog(text, cls = 'out') {
   const line = document.createElement('div');
   line.className = 'line ' + cls;
   line.textContent = text;
   consoleEl.appendChild(line);
-  while (consoleEl.children.length > APP.maxConsole) {
-    consoleEl.removeChild(consoleEl.firstChild);
-  }
+  while (consoleEl.children.length > APP.maxConsole) consoleEl.removeChild(consoleEl.firstChild);
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 function cclear() { consoleEl.innerHTML = ''; }
 
-/* ============================================================
-   DIRTY FLAG
-   ============================================================ */
+/* DIRTY */
 function updateSaveIndicator() {
   const btn = $('btnSave');
   if (!btn) return;
   btn.classList.toggle('tb-dirty', state.dirty);
   btn.title = state.dirty ? 'Salva (modifiche non salvate)' : 'Salva';
 }
-function markSaved() {
-  state.dirty = false;
-  updateSaveIndicator();
-}
+function markSaved() { state.dirty = false; updateSaveIndicator(); }
 
 /* ============================================================
-   INDEXEDDB — HANDLE FILE
+   INDEXEDDB
    ============================================================ */
 function openHandleDB() {
   return new Promise((resolve, reject) => {
@@ -220,7 +214,7 @@ function canonicalType(t) {
 }
 
 /* ============================================================
-   ANCHOR TOP PER LINEE ENTRANTI
+   ANCHOR / FORMAT
    ============================================================ */
 function anchorTopFor(node, y, h) {
   const def = DEFS[node.type];
@@ -234,10 +228,6 @@ function anchorTopFor(node, y, h) {
       return y;
   }
 }
-
-/* ============================================================
-   FORMATTAZIONE TESTO FOR
-   ============================================================ */
 function formatForText(node) {
   const d = node.forData;
   if (!d || !d.variable) return 'Configura...';
@@ -542,6 +532,77 @@ function createNodeEl(node, idx) {
     selectNode(node.id);
   });
 
+  /* ----- DRAG NODO (solo se draggable !== false) ----- */
+  const isDraggable = def.draggable !== false;
+  if (isDraggable) {
+    /* Mouse */
+    let dragMouse = null;
+    el.addEventListener('mousedown', e => {
+      if (e.target.tagName === 'INPUT' || e.target.closest('.node-del') || e.target.classList.contains('connector')) return;
+      e.stopPropagation();
+      e.preventDefault();
+      dragMouse = {
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startWorldX: node.x,
+        startWorldY: node.y,
+      };
+      el.style.zIndex = 100;
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragMouse || !el.isConnected) return;
+      const dx = (e.clientX - dragMouse.startClientX) / state.zoom;
+      const dy = (e.clientY - dragMouse.startClientY) / state.zoom;
+      const x = dragMouse.startWorldX + dx;
+      const y = dragMouse.startWorldY + dy;
+      el.style.left = x + 'px';
+      el.style.top  = y + 'px';
+      node.x = x; node.y = y;
+      renderLinks(buildLayout());
+    });
+    document.addEventListener('mouseup', () => {
+      if (!dragMouse) return;
+      dragMouse = null;
+      el.style.zIndex = '';
+      scheduleSave();
+    });
+
+    /* Touch */
+    let dragTouch = null;
+    el.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      if (e.target.tagName === 'INPUT' || e.target.closest('.node-del') || e.target.classList.contains('connector')) return;
+      e.stopPropagation();
+      const t = e.touches[0];
+      dragTouch = {
+        startClientX: t.clientX,
+        startClientY: t.clientY,
+        startWorldX: node.x,
+        startWorldY: node.y,
+      };
+      el.style.zIndex = 100;
+    }, { passive: true });
+    el.addEventListener('touchmove', e => {
+      if (!dragTouch || e.touches.length !== 1) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      const dx = (t.clientX - dragTouch.startClientX) / state.zoom;
+      const dy = (t.clientY - dragTouch.startClientY) / state.zoom;
+      const x = dragTouch.startWorldX + dx;
+      const y = dragTouch.startWorldY + dy;
+      el.style.left = x + 'px';
+      el.style.top  = y + 'px';
+      node.x = x; node.y = y;
+      renderLinks(buildLayout());
+    }, { passive: false });
+    el.addEventListener('touchend', () => {
+      if (!dragTouch) return;
+      dragTouch = null;
+      el.style.zIndex = '';
+      scheduleSave();
+    });
+  }
+
   return el;
 }
 
@@ -613,7 +674,7 @@ function buildLayout() {
     if (el) { el.style.width = s.w + 'px'; el.style.minHeight = s.h + 'px'; }
   });
 
-  const viewportW = canvasWrap.clientWidth || 900;
+  const viewportW = canvasEl.clientWidth || 900;
   const minNeeded = 2 * BRANCH_OFFSET + 240;
   const baseW = Math.max(viewportW, minNeeded);
   const centerX = baseW / 2;
@@ -879,8 +940,8 @@ function buildLayout() {
 function renderLinks(layout) {
   linksEl.innerHTML = '';
   overlayEl.innerHTML = '';
-  const W = Math.max(layout.maxX + 80, 100);
-  const H = Math.max(layout.maxY + 80, 100);
+  const W = state.natW || 800;
+  const H = state.natH || 600;
   linksEl.setAttribute('width', W);
   linksEl.setAttribute('height', H);
   linksEl.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
@@ -973,6 +1034,7 @@ function renderLinks(layout) {
    ============================================================ */
 function layoutAll() {
   const layout = buildLayout();
+
   layout.positions.forEach((p, id) => {
     const el = nodesEl.querySelector('.node[data-id="' + id + '"]');
     if (el) {
@@ -982,11 +1044,28 @@ function layoutAll() {
       el.style.minHeight = p.h + 'px';
     }
   });
-  const totalH = layout.maxY + 100;
-  const totalW = layout.maxX + 100;
-  nodesEl.style.height = totalH + 'px';
-  nodesEl.style.width = totalW + 'px';
+
+  state.natW = Math.max(layout.maxX + 100, 200);
+  state.natH = Math.max(layout.maxY + 100, 200);
+
+  /* Salva il bounding box reale (world coords) per la centratura */
+  state.contentMinX = layout.minX;
+  state.contentMaxX = layout.maxX;
+  state.contentMinY = 0;
+  state.contentMaxY = layout.maxY;
+
+  canvasContentEl.style.width  = state.natW + 'px';
+  canvasContentEl.style.height = state.natH + 'px';
+
   renderLinks(layout);
+
+  if (!state.hasCentered) {
+    centerDiagram();
+    state.hasCentered = true;
+  } else {
+    clampPan();
+    applyTransform();
+  }
 }
 
 function render() {
@@ -1001,7 +1080,275 @@ function render() {
 }
 
 /* ============================================================
-   POPUP TIPO VARIABILE
+   PAN & ZOOM
+   ============================================================ */
+function applyTransform() {
+  canvasContentEl.style.transform =
+    'translate(' + state.panX + 'px, ' + state.panY + 'px) scale(' + state.zoom + ')';
+  $('ctZoom').textContent = Math.round(state.zoom * 100) + '%';
+}
+
+/* ------------------------------------------------------------
+   clampPan — range ampio quando il contenuto è piccolo,
+   navigazione libera quando è grande.
+   ------------------------------------------------------------ */
+function clampPan() {
+  const wrapW = canvasEl.clientWidth;
+  const wrapH = canvasEl.clientHeight;
+  const visW = state.natW * state.zoom;
+  const visH = state.natH * state.zoom;
+  const m = PAN_MARGIN;
+
+  /* X */
+  let minX, maxX;
+  if (visW <= wrapW) {
+    minX = -m;
+    maxX = wrapW - visW + m;
+  } else {
+    minX = wrapW - visW - m;
+    maxX = m;
+  }
+  state.panX = Math.max(minX, Math.min(maxX, state.panX));
+
+  /* Y */
+  let minY, maxY;
+  if (visH <= wrapH) {
+    minY = -m;
+    maxY = wrapH - visH + m;
+  } else {
+    minY = wrapH - visH - m;
+    maxY = m;
+  }
+  state.panY = Math.max(minY, Math.min(maxY, state.panY));
+}
+
+/* ------------------------------------------------------------
+   centerDiagram — usa il bounding box reale del contenuto
+   (non natW). Centra orizzontalmente, ancora in alto in Y.
+   ------------------------------------------------------------ */
+function centerDiagram() {
+  const wrapW = canvasEl.clientWidth;
+  const cx = (state.contentMinX + state.contentMaxX) / 2;
+  state.panX = wrapW / 2 - cx * state.zoom;
+  state.panY = TOP_ANCHOR_Y;
+  applyTransform();
+}
+
+/* ------------------------------------------------------------
+   fitToView — adatta zoom e pan per mostrare tutto il diagramma
+   ------------------------------------------------------------ */
+function fitToView() {
+  const wrapW = canvasEl.clientWidth;
+  const wrapH = canvasEl.clientHeight;
+  const contentW = Math.max(1, state.contentMaxX - state.contentMinX);
+  const contentH = Math.max(1, state.contentMaxY - state.contentMinY);
+
+  const padX = 60;
+  const padY = TOP_ANCHOR_Y + 40;
+  const zx = (wrapW - padX) / contentW;
+  const zy = (wrapH - padY) / contentH;
+  const newZoom = Math.max(MIN_ZOOM, Math.min(1, Math.min(zx, zy)));
+
+  state.zoom = newZoom;
+  const cx = (state.contentMinX + state.contentMaxX) / 2;
+  state.panX = wrapW / 2 - cx * newZoom;
+  state.panY = TOP_ANCHOR_Y;
+  clampPan();
+  applyTransform();
+}
+
+/* ------------------------------------------------------------
+   zoomTo — mantiene stabile il punto sotto l'anchor
+   ------------------------------------------------------------ */
+function zoomTo(newZ, anchorX, anchorY) {
+  const oldZ = state.zoom;
+  const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZ));
+  if (Math.abs(z - oldZ) < 0.001) return;
+
+  const wx = (anchorX - state.panX) / oldZ;
+  const wy = (anchorY - state.panY) / oldZ;
+
+  state.zoom = z;
+  state.panX = anchorX - wx * z;
+  state.panY = anchorY - wy * z;
+
+  clampPan();
+  applyTransform();
+}
+
+function zoomToCenter(newZ) {
+  const cx = canvasEl.clientWidth / 2;
+  const cy = canvasEl.clientHeight / 2;
+  zoomTo(newZ, cx, cy);
+}
+
+/* ============================================================
+   PAN — Mouse (tasto centrale o sinistro sul vuoto)
+   ============================================================ */
+let mousePanState = null;
+
+canvasEl.addEventListener('mousedown', (e) => {
+  const isMiddle = e.button === 1;
+  const isEmpty = !e.target.closest('.node, .plus, .connector, .node-del, .node-sublabel, .for-display');
+  const isLeft = e.button === 0;
+
+  if (!isMiddle && !(isLeft && isEmpty)) return;
+
+  e.preventDefault();
+  mousePanState = {
+    startClientX: e.clientX,
+    startClientY: e.clientY,
+    startPanX: state.panX,
+    startPanY: state.panY,
+  };
+  canvasEl.classList.add('panning');
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!mousePanState) return;
+  const dx = e.clientX - mousePanState.startClientX;
+  const dy = e.clientY - mousePanState.startClientY;
+  state.panX = mousePanState.startPanX + dx;
+  state.panY = mousePanState.startPanY + dy;
+  clampPan();
+  applyTransform();
+});
+
+document.addEventListener('mouseup', () => {
+  if (!mousePanState) return;
+  mousePanState = null;
+  canvasEl.classList.remove('panning');
+});
+
+canvasEl.addEventListener('auxclick', (e) => {
+  if (e.button === 1) e.preventDefault();
+});
+
+/* ============================================================
+   ZOOM — Rotellina del mouse (desktop), pinch (mobile)
+   ============================================================ */
+function handleWheelZoom(e) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const rect = canvasEl.getBoundingClientRect();
+  const ax = e.clientX - rect.left;
+  const ay = e.clientY - rect.top;
+
+  let delta = e.deltaY;
+  if (e.deltaMode === 1) delta *= 16;
+  else if (e.deltaMode === 2) delta *= 100;
+
+  const factor = Math.exp(-delta * 0.0015);
+  zoomTo(state.zoom * factor, ax, ay);
+}
+canvasEl.addEventListener('wheel', handleWheelZoom, { passive: false });
+canvasWrap.addEventListener('wheel', handleWheelZoom, { passive: false });
+
+/* ============================================================
+   PAN & PINCH — Touch
+   ============================================================ */
+let touchState = null;
+
+canvasEl.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    const t1 = e.touches[0], t2 = e.touches[1];
+    touchState = {
+      mode: 'pinch',
+      startDist: Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY),
+      startZoom: state.zoom,
+      startMidX: (t1.clientX + t2.clientX) / 2,
+      startMidY: (t1.clientY + t2.clientY) / 2,
+      startPanX: state.panX,
+      startPanY: state.panY,
+    };
+    canvasEl.classList.add('pinching');
+    canvasEl.classList.remove('panning');
+    e.preventDefault();
+    return;
+  }
+
+  if (e.touches.length === 1) {
+    const isEmpty = !e.target.closest('.node, .plus, .connector, .node-del, .node-sublabel, .for-display');
+    if (!isEmpty) return;
+
+    const t = e.touches[0];
+    touchState = {
+      mode: 'pan',
+      startClientX: t.clientX,
+      startClientY: t.clientY,
+      startPanX: state.panX,
+      startPanY: state.panY,
+    };
+    canvasEl.classList.add('panning');
+  }
+}, { passive: false });
+
+canvasEl.addEventListener('touchmove', (e) => {
+  if (!touchState) return;
+
+  if (touchState.mode === 'pinch' && e.touches.length >= 2) {
+    e.preventDefault();
+    const t1 = e.touches[0], t2 = e.touches[1];
+    const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+    const midX = (t1.clientX + t2.clientX) / 2 - canvasEl.getBoundingClientRect().left;
+    const midY = (t1.clientY + t2.clientY) / 2 - canvasEl.getBoundingClientRect().top;
+
+    const ratio = dist / touchState.startDist;
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, touchState.startZoom * ratio));
+
+    const wx = (touchState.startMidX - touchState.startPanX) / touchState.startZoom;
+    const wy = (touchState.startMidY - touchState.startPanY) / touchState.startZoom;
+
+    state.zoom = newZoom;
+    state.panX = midX - wx * newZoom;
+    state.panY = midY - wy * newZoom;
+
+    clampPan();
+    applyTransform();
+    return;
+  }
+
+  if (touchState.mode === 'pan' && e.touches.length === 1) {
+    e.preventDefault();
+    const t = e.touches[0];
+    const dx = t.clientX - touchState.startClientX;
+    const dy = t.clientY - touchState.startClientY;
+    state.panX = touchState.startPanX + dx;
+    state.panY = touchState.startPanY + dy;
+    clampPan();
+    applyTransform();
+  }
+}, { passive: false });
+
+function endTouch(e) {
+  if (!touchState) return;
+  const remaining = e.touches.length;
+
+  if (touchState.mode === 'pinch' && remaining === 1) {
+    const t = e.touches[0];
+    touchState = {
+      mode: 'pan',
+      startClientX: t.clientX,
+      startClientY: t.clientY,
+      startPanX: state.panX,
+      startPanY: state.panY,
+    };
+    canvasEl.classList.remove('pinching');
+    canvasEl.classList.add('panning');
+    return;
+  }
+
+  if (remaining === 0) {
+    touchState = null;
+    canvasEl.classList.remove('panning', 'pinching');
+  }
+}
+canvasEl.addEventListener('touchend', endTouch);
+canvasEl.addEventListener('touchcancel', endTouch);
+
+/* ============================================================
+   POPUP TIPO
    ============================================================ */
 function openTypePicker(currentType, onConfirm) {
   typeModal.hidden = false;
@@ -1077,9 +1424,6 @@ function confirmForDialog() {
   toast('For configurato');
 }
 
-/* ============================================================
-   INSERIMENTO
-   ============================================================ */
 function requestInsert(atIndex, mode) {
   state.insertAt = atIndex;
   state.insertMode = mode || null;
@@ -1124,9 +1468,7 @@ function addNode(type, atIndex, opts) {
   scheduleSave();
   toast(def.label + ' aggiunto');
 
-  if (type === 'for') {
-    setTimeout(() => openForDialog(node), 200);
-  }
+  if (type === 'for') setTimeout(() => openForDialog(node), 200);
 }
 
 function deleteNode(id) {
@@ -1235,7 +1577,7 @@ function renderVars() {
 }
 
 /* ============================================================
-   INPUT UTENTE
+   INPUT UTENTE (console)
    ============================================================ */
 function requestInput(prompt) {
   return new Promise(resolve => {
@@ -1249,12 +1591,10 @@ function requestInput(prompt) {
     const ok = document.createElement('button');
     ok.textContent = '↵';
     ok.style.cssText = 'padding:6px 14px;background:#2563eb;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700;min-height:36px;';
-    row.appendChild(inp);
-    row.appendChild(ok);
+    row.appendChild(inp); row.appendChild(ok);
     consoleEl.appendChild(row);
     consoleEl.scrollTop = consoleEl.scrollHeight;
     setTimeout(() => inp.focus(), 50);
-
     const finish = () => {
       const raw = inp.value;
       const num = Number(raw);
@@ -1264,9 +1604,7 @@ function requestInput(prompt) {
       resolve(v);
     };
     ok.addEventListener('click', finish);
-    inp.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') { e.preventDefault(); finish(); }
-    });
+    inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); finish(); } });
   });
 }
 
@@ -1289,7 +1627,18 @@ function highlight(id, cls) {
   const el = nodesEl.querySelector('.node[data-id="' + id + '"]');
   if (el) {
     el.classList.add(cls);
-    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+    const wrapW = canvasEl.clientWidth;
+    const wrapH = canvasEl.clientHeight;
+    const nodeWorldX = parseFloat(el.style.left) + el.offsetWidth / 2;
+    const nodeWorldY = parseFloat(el.style.top)  + el.offsetHeight / 2;
+    const nodeScreenX = state.panX + nodeWorldX * state.zoom;
+    const nodeScreenY = state.panY + nodeWorldY * state.zoom;
+    if (nodeScreenX < 60 || nodeScreenX > wrapW - 60 || nodeScreenY < 60 || nodeScreenY > wrapH - 60) {
+      state.panX = wrapW / 2 - nodeWorldX * state.zoom;
+      state.panY = wrapH / 2 - nodeWorldY * state.zoom;
+      clampPan();
+      applyTransform();
+    }
     linksEl.querySelectorAll('.link[data-to-id="' + id + '"]').forEach(l => l.classList.add('active'));
   }
 }
@@ -1328,7 +1677,7 @@ function coerceValue(v, type) {
 }
 
 /* ============================================================
-   ESECUZIONE SEMPLICE
+   ESECUZIONE
    ============================================================ */
 async function execSimple(node) {
   const text = (node.text || '').trim();
@@ -1446,9 +1795,6 @@ async function execSimple(node) {
   }
 }
 
-/* ============================================================
-   ESECUZIONE BLOCCO (albero)
-   ============================================================ */
 async function executeBlock(items, ctx) {
   for (let i = 0; i < items.length; i++) {
     if (!state.running) return 'stop';
@@ -1576,9 +1922,6 @@ async function executeBlock(items, ctx) {
   return 'ok';
 }
 
-/* ============================================================
-   RUN ALL
-   ============================================================ */
 async function runAll() {
   if (state.running) return;
   const start = state.nodes.find(n => n.type === 'start');
@@ -1609,9 +1952,6 @@ async function runAll() {
   }
 }
 
-/* ============================================================
-   STEP ONCE
-   ============================================================ */
 async function stepOnce() {
   if (!state.running) {
     state.running = true;
@@ -1652,12 +1992,21 @@ async function stepOnce() {
   }
 }
 
+function stopRun() {
+  state.running = false;
+  state.paused = false;
+  clog('Interrotto', 'warn');
+  toggleRunUI(false);
+  highlight(null);
+}
+
 function toggleRunUI(running) {
   $('btnRun').disabled = running;
   $('btnStep').disabled = running;
   $('btnStop').disabled = !running;
-  const mtab = $('mtabRun');
-  if (mtab) mtab.disabled = running;
+  const mr = $('mtabRun'); if (mr) mr.disabled = running;
+  const ms = $('mtabStep'); if (ms) ms.disabled = running;
+  const mt = $('mtabStop'); if (mt) mt.disabled = !running;
 }
 
 /* ============================================================
@@ -1699,23 +2048,11 @@ function redo() {
    SALVA / CARICA
    ============================================================ */
 let saveTimer = null;
-function scheduleSave() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveAuto, 500);
-}
+function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveAuto, 500); }
 function getProjectData() {
-  return {
-    app: APP.name,
-    format: 'flowlab',
-    version: APP.version,
-    savedAt: new Date().toISOString(),
-    nodes: state.nodes,
-    varDefs: state.varDefs,
-  };
+  return { app: APP.name, format: 'flowlab', version: APP.version, savedAt: new Date().toISOString(), nodes: state.nodes, varDefs: state.varDefs };
 }
-function saveAuto() {
-  try { localStorage.setItem(APP.storageKey, JSON.stringify(getProjectData())); } catch (e) {}
-}
+function saveAuto() { try { localStorage.setItem(APP.storageKey, JSON.stringify(getProjectData())); } catch (e) {} }
 function loadAuto() {
   try {
     const raw = localStorage.getItem(APP.storageKey);
@@ -1833,9 +2170,6 @@ function parseProject(text, filename) {
   } catch (e) { toast('Errore: ' + e.message, 3500); }
 }
 
-/* ============================================================
-   NUOVO PROGETTO
-   ============================================================ */
 function doNewProject() {
   state.nodes = [
     { id: uid(), type: 'start', text: '' },
@@ -1849,6 +2183,7 @@ function doNewProject() {
   state.fileHandle = null;
   clearHandleFromDB(FILE_HANDLE_KEY);
   state.dirty = false;
+  state.hasCentered = false;
   render();
   renderVars();
   state.history = [snapshot()];
@@ -1970,7 +2305,7 @@ function exportPNG() {
 }
 
 /* ============================================================
-   GENERAZIONE CODICE C
+   GENERAZIONE C
    ============================================================ */
 function cTypeOf(t) {
   switch (t) {
@@ -2116,7 +2451,7 @@ function generateC() {
 }
 
 /* ============================================================
-   GENERAZIONE CODICE PYTHON
+   GENERAZIONE PYTHON
    ============================================================ */
 function pyExpr(expr) {
   let e = String(expr).trim();
@@ -2253,37 +2588,8 @@ function generatePython() {
 }
 
 /* ============================================================
-   ZOOM — v23: centrato sul viewport + pinch mobile
+   FULLSCREEN
    ============================================================ */
-function setZoom(z) {
-  const wrapW = canvasWrap.clientWidth;
-  const wrapH = canvasWrap.clientHeight;
-  const z1 = state.zoom;
-  const z2 = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
-  if (Math.abs(z2 - z1) < 0.001) return;
-
-  /* Punto (in coordinat del contenuto) attualmente al centro dello schermo */
-  const s1x = canvasEl.scrollLeft;
-  const s1y = canvasEl.scrollTop;
-
-  state.zoom = z2;
-  canvasEl.style.transform = 'scale(' + z2 + ')';
-  canvasEl.style.transformOrigin = '0 0';
-  canvasEl.style.width  = (100 / z2) + '%';
-  canvasEl.style.height = (100 / z2) + '%';
-  $('ctZoom').textContent = Math.round(z2 * 100) + '%';
-
-  /* Nuovo scroll per mantenere lo stesso punto al centro */
-  const s2x = s1x + (wrapW / 2) * (1 / z1 - 1 / z2);
-  const s2y = s1y + (wrapH / 2) * (1 / z1 - 1 / z2);
-
-  /* Applica dopo il reflow */
-  requestAnimationFrame(() => {
-    canvasEl.scrollLeft = s2x;
-    canvasEl.scrollTop = s2y;
-  });
-}
-
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
     const el = document.documentElement;
@@ -2297,53 +2603,7 @@ function toggleFullscreen() {
 }
 
 /* ============================================================
-   PINCH-TO-ZOOM (mobile, due dita)
-   ============================================================ */
-let pinchState = null;
-
-canvasEl.addEventListener('touchstart', function(e) {
-  if (e.touches.length === 2) {
-    /* Calcola distanza iniziale tra le due dita */
-    const t1 = e.touches[0], t2 = e.touches[1];
-    const dx = t1.clientX - t2.clientX;
-    const dy = t1.clientY - t2.clientY;
-    pinchState = {
-      lastDist: Math.hypot(dx, dy),
-      originalTouchAction: canvasEl.style.touchAction,
-    };
-    /* Blocca scroll nativo durante il pinch */
-    canvasEl.style.touchAction = 'none';
-  }
-}, { passive: true });
-
-canvasEl.addEventListener('touchmove', function(e) {
-  if (!pinchState || e.touches.length !== 2) return;
-  e.preventDefault();
-
-  const t1 = e.touches[0], t2 = e.touches[1];
-  const dx = t1.clientX - t2.clientX;
-  const dy = t1.clientY - t2.clientY;
-  const dist = Math.hypot(dx, dy);
-
-  if (pinchState.lastDist > 0) {
-    const ratio = dist / pinchState.lastDist;
-    setZoom(state.zoom * ratio);
-  }
-  pinchState.lastDist = dist;
-}, { passive: false });
-
-function endPinch(e) {
-  if (!pinchState) return;
-  if (e.touches && e.touches.length >= 2) return;
-  /* Ripristina touch-action originale */
-  canvasEl.style.touchAction = pinchState.originalTouchAction || 'pan-x pan-y';
-  pinchState = null;
-}
-canvasEl.addEventListener('touchend', endPinch);
-canvasEl.addEventListener('touchcancel', endPinch);
-
-/* ============================================================
-   MENU MOBILE ⋯
+   MENU MOBILE
    ============================================================ */
 function closeMobileMenu() {
   const menu = $('mobileMenu');
@@ -2364,17 +2624,12 @@ function toggleMobileMenu() {
   if (menu.hidden) openMobileMenu(); else closeMobileMenu();
 }
 
-/* ============================================================
-   PANNELLI MOBILE — esclusivi
-   ============================================================ */
 function closeAllPanels() {
   ['panelLeft', 'panelRight'].forEach(id => {
     const el = $(id);
     if (el) el.classList.remove('open');
   });
-  document.querySelectorAll('.mtab[data-toggle]').forEach(t => {
-    t.classList.remove('mtab-active');
-  });
+  document.querySelectorAll('.mtab[data-toggle]').forEach(t => t.classList.remove('mtab-active'));
 }
 function closeOtherPanel(exceptId) {
   ['panelLeft', 'panelRight'].forEach(id => {
@@ -2389,7 +2644,6 @@ function togglePanel(panelId, tabEl) {
   const panel = $(panelId);
   if (!panel) return;
   const willOpen = !panel.classList.contains('open');
-
   closeOtherPanel(panelId);
   if (willOpen) {
     panel.classList.add('open');
@@ -2403,17 +2657,9 @@ function togglePanel(panelId, tabEl) {
 /* ============================================================
    EVENT LISTENERS
    ============================================================ */
-
-/* Toolbar principale */
 $('btnRun').addEventListener('click', runAll);
 $('btnStep').addEventListener('click', stepOnce);
-$('btnStop').addEventListener('click', function() {
-  state.running = false;
-  state.paused = false;
-  clog('Interrotto', 'warn');
-  toggleRunUI(false);
-  highlight(null);
-});
+$('btnStop').addEventListener('click', stopRun);
 $('btnNew').addEventListener('click', newProject);
 $('btnUndo').addEventListener('click', undo);
 $('btnRedo').addEventListener('click', redo);
@@ -2423,27 +2669,18 @@ $('btnExportPNG').addEventListener('click', exportPNG);
 $('btnFullscreen').addEventListener('click', toggleFullscreen);
 
 $('btnExportC').addEventListener('click', function() {
-  try {
-    state.codeLang = 'c';
-    $('cOutput').textContent = generateC();
-    cModal.hidden = false;
-  } catch (e) { toast('Errore: ' + e.message); }
+  try { state.codeLang = 'c'; $('cOutput').textContent = generateC(); cModal.hidden = false; }
+  catch (e) { toast('Errore: ' + e.message); }
 });
 $('btnExportPy').addEventListener('click', function() {
-  try {
-    state.codeLang = 'python';
-    $('cOutput').textContent = generatePython();
-    cModal.hidden = false;
-  } catch (e) { toast('Errore: ' + e.message); }
+  try { state.codeLang = 'python'; $('cOutput').textContent = generatePython(); cModal.hidden = false; }
+  catch (e) { toast('Errore: ' + e.message); }
 });
 
 $('cClose').addEventListener('click', () => { cModal.hidden = true; });
 $('cCloseBtn').addEventListener('click', () => { cModal.hidden = true; });
 $('cCopy').addEventListener('click', function() {
-  navigator.clipboard.writeText($('cOutput').textContent).then(
-    () => toast('Copiato'),
-    () => toast('Errore')
-  );
+  navigator.clipboard.writeText($('cOutput').textContent).then(() => toast('Copiato'), () => toast('Errore'));
 });
 $('cDownload').addEventListener('click', function() {
   const code = $('cOutput').textContent;
@@ -2466,26 +2703,14 @@ $('speedRange').addEventListener('input', function(e) {
   $('speedLabel').textContent = SPEED_NAMES[state.speed];
 });
 
-$('ctZoomIn').addEventListener('click', () => setZoom(state.zoom + 0.15));
-$('ctZoomOut').addEventListener('click', () => setZoom(state.zoom - 0.15));
-$('ctReset').addEventListener('click', () => {
-  setZoom(1);
-  /* Reset scroll al centro */
-  requestAnimationFrame(() => {
-    canvasEl.scrollLeft = 0;
-    canvasEl.scrollTop = 0;
-  });
-});
+$('ctZoomIn').addEventListener('click', () => zoomToCenter(state.zoom * 1.2));
+$('ctZoomOut').addEventListener('click', () => zoomToCenter(state.zoom / 1.2));
+$('ctReset').addEventListener('click', fitToView);
 $('btnClearConsole').addEventListener('click', cclear);
 
-/* Menu mobile ⋯ */
-$('btnMenu').addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleMobileMenu();
-});
-
+/* Menu mobile */
+$('btnMenu').addEventListener('click', (e) => { e.stopPropagation(); toggleMobileMenu(); });
 $('mobileMenuBackdrop').addEventListener('click', closeMobileMenu);
-
 document.querySelectorAll('.mm-item').forEach(btn => {
   btn.addEventListener('click', () => {
     const action = btn.dataset.action;
@@ -2506,7 +2731,6 @@ document.querySelectorAll('.mm-item').forEach(btn => {
     }
   });
 });
-
 const mmSpeedEl = $('mmSpeed');
 if (mmSpeedEl) {
   mmSpeedEl.addEventListener('input', (e) => {
@@ -2531,7 +2755,7 @@ forModal.addEventListener('click', e => { if (e.target === forModal) closeForDia
   });
 });
 
-/* Card dalla sidebar */
+/* Card */
 document.querySelectorAll('.card[data-add]').forEach(function(c) {
   c.addEventListener('click', function() {
     const type = c.dataset.add;
@@ -2550,7 +2774,7 @@ document.querySelectorAll('.card[data-add]').forEach(function(c) {
   });
 });
 
-/* Pick dal picker */
+/* Picker */
 document.querySelectorAll('.pick[data-add]').forEach(function(b) {
   b.addEventListener('click', function() {
     const type = b.dataset.add;
@@ -2578,22 +2802,10 @@ $('typeClose').addEventListener('click', closeTypePicker);
 $('typeCancel').addEventListener('click', closeTypePicker);
 typeModal.addEventListener('click', e => { if (e.target === typeModal) closeTypePicker(); });
 
-/* Bottom tab mobile — esclusivi */
+/* Bottom tab */
 document.querySelectorAll('.mtab[data-toggle]').forEach(function(t) {
-  t.addEventListener('click', function() {
-    togglePanel(t.dataset.toggle, t);
-  });
+  t.addEventListener('click', function() { togglePanel(t.dataset.toggle, t); });
 });
-
-/* Chiudi pannelli al tocco sul canvas (mobile) */
-canvasEl.addEventListener('pointerdown', function() {
-  if (window.innerWidth > 800) return;
-  if (document.querySelector('.panel.open')) {
-    closeAllPanels();
-  }
-});
-
-/* Panel close button */
 document.querySelectorAll('.panel-toggle[data-close]').forEach(function(b) {
   b.addEventListener('click', function() {
     const id = b.dataset.close;
@@ -2604,14 +2816,17 @@ document.querySelectorAll('.panel-toggle[data-close]').forEach(function(b) {
   });
 });
 
+/* Mobile action buttons (barra centrale) */
 const mtabRun = $('mtabRun');
 if (mtabRun) mtabRun.addEventListener('click', runAll);
+const mtabStep = $('mtabStep');
+if (mtabStep) mtabStep.addEventListener('click', stepOnce);
+const mtabStop = $('mtabStop');
+if (mtabStop) mtabStop.addEventListener('click', stopRun);
 
 /* Var modal */
 $('btnAddVar').addEventListener('click', function() {
-  $('varName').value = '';
-  $('varType').value = 'Integer';
-  $('varValue').value = '0';
+  $('varName').value = ''; $('varType').value = 'Integer'; $('varValue').value = '0';
   varModal.hidden = false;
   setTimeout(() => $('varName').focus(), 50);
 });
@@ -2637,8 +2852,7 @@ $('varOk').addEventListener('click', function() {
   renderVars();
   varModal.hidden = true;
   scheduleSave();
-  state.dirty = true;
-  updateSaveIndicator();
+  state.dirty = true; updateSaveIndicator();
   toast('Variabile creata');
 });
 
@@ -2666,15 +2880,9 @@ document.addEventListener('keydown', function(e) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveToFile(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runAll(); return; }
   if (e.key === 'Escape') {
-    pickerEl.hidden = true;
-    varModal.hidden = true;
-    cModal.hidden = true;
-    closeTypePicker();
-    closeForDialog();
-    closeMobileMenu();
-    closeAllPanels();
-    state.insertAt = -1;
-    state.insertMode = null;
+    pickerEl.hidden = true; varModal.hidden = true; cModal.hidden = true;
+    closeTypePicker(); closeForDialog(); closeMobileMenu(); closeAllPanels();
+    state.insertAt = -1; state.insertMode = null;
   }
 }, true);
 
@@ -2683,11 +2891,9 @@ let resizeTimer = null;
 function handleResize() {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    if (window.innerWidth > 800) {
-      closeAllPanels();
-      closeMobileMenu();
-    }
-    layoutAll();
+    if (window.innerWidth > 800) { closeAllPanels(); closeMobileMenu(); }
+    clampPan();
+    applyTransform();
   }, 100);
 }
 window.addEventListener('resize', handleResize);
@@ -2696,7 +2902,7 @@ window.addEventListener('orientationchange', handleResize);
 document.addEventListener('fullscreenchange', function() {
   const isFs = !!document.fullscreenElement;
   $('btnFullscreen').title = isFs ? 'Esci' : 'Schermo intero';
-  setTimeout(layoutAll, 100);
+  setTimeout(() => { clampPan(); applyTransform(); }, 100);
 });
 
 window.addEventListener('beforeunload', function(e) {
@@ -2727,7 +2933,6 @@ function init() {
     }
   })();
 
-  /* Service Worker */
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js')
@@ -2746,8 +2951,8 @@ function init() {
   ensureStartEnd();
 
   render();
-  setTimeout(layoutAll, 300);
-  setTimeout(layoutAll, 600);
+  setTimeout(() => { layoutAll(); centerDiagram(); }, 300);
+  setTimeout(() => { layoutAll(); centerDiagram(); }, 600);
 
   requestAnimationFrame(function() {
     renderVars();
@@ -2758,16 +2963,14 @@ function init() {
     statusText.textContent = 'Pronto';
     statusSteps.textContent = '0 step';
     if (!loaded) saveAuto();
-    clog('Zoom: usa + / − o pinch con due dita', 'sys');
-    clog('Clicca sul blocco For per configurarlo', 'sys');
+    clog('Zoom: rotellina del mouse (desktop) o pinch (mobile)', 'sys');
+    clog('Pan: tasto centrale · click sinistro sul vuoto · 1 dito su mobile', 'sys');
   });
 
   try {
     localStorage.setItem('__fl__', '1');
     localStorage.removeItem('__fl__');
-  } catch (e) {
-    clog('localStorage non disponibile', 'warn');
-  }
+  } catch (e) { clog('localStorage non disponibile', 'warn'); }
 }
 
 if (document.readyState === 'loading') {

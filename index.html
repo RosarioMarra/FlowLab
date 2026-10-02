@@ -6,9 +6,6 @@
 <meta name="theme-color" content="#1a237e" />
 <meta name="description" content="FlowLab — Editor di flowchart visuale con esecuzione in tempo reale." />
 
-<!-- ============================================================
-     PWA
-     ============================================================ -->
 <link rel="manifest" href="manifest.json" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -17,15 +14,12 @@
 <meta name="msapplication-TileColor" content="#1a237e" />
 <meta name="msapplication-TileImage" content="Immagini/icon-150.png" />
 
-<!-- Favicon completo -->
 <link rel="icon" type="image/png" sizes="70x70"   href="Immagini/icon-70.png" />
 <link rel="icon" type="image/png" sizes="144x144" href="Immagini/icon-144.png" />
 <link rel="icon" type="image/png" sizes="150x150" href="Immagini/icon-150.png" />
 <link rel="icon" type="image/png" sizes="192x192" href="Immagini/icon-192.png" />
 <link rel="icon" type="image/png" sizes="310x310" href="Immagini/icon-310.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="Immagini/icon-512.png" />
-
-<!-- Apple Touch Icons -->
 <link rel="apple-touch-icon" sizes="144x144" href="Immagini/icon-144.png" />
 <link rel="apple-touch-icon" sizes="150x150" href="Immagini/icon-150.png" />
 <link rel="apple-touch-icon" sizes="192x192" href="Immagini/icon-192.png" />
@@ -35,9 +29,6 @@
 </head>
 <body>
 
-<!-- ============================================================
-     TOPBAR
-     ============================================================ -->
 <header class="topbar">
   <div class="brand">
     <img src="Immagini/icon-70.png" alt="FlowLab" class="brand-logo" />
@@ -45,20 +36,20 @@
   </div>
 
   <div class="toolbar" id="toolbar">
-    <button id="btnRun" class="tb tb-primary" title="Esegui">
+    <button id="btnRun" class="tb tb-primary tb-run-control" title="Esegui">
       <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/></svg>
       <span class="lbl">Esegui</span>
     </button>
-    <button id="btnStep" class="tb" title="Passo">
+    <button id="btnStep" class="tb tb-run-control" title="Passo">
       <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M5 4 L15 12 L5 20 Z M17 4 L19 4 L19 20 L17 20 Z" fill="currentColor"/></svg>
       <span class="lbl">Passo</span>
     </button>
-    <button id="btnStop" class="tb tb-danger" title="Ferma" disabled>
+    <button id="btnStop" class="tb tb-danger tb-run-control" title="Ferma" disabled>
       <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><rect x="6" y="6" width="12" height="12" fill="currentColor"/></svg>
       <span class="lbl">Stop</span>
     </button>
 
-    <span class="tb-sep"></span>
+    <span class="tb-sep tb-run-control"></span>
 
     <button id="btnUndo" class="tb tb-icon tb-secondary" title="Annulla">
       <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 5 V1 L6 6 L12 11 V7 C16 7 19 10 19 14 C19 18 16 21 12 21 C8 21 5 18 5 14 H3 C3 19 7 23 12 23 C17 23 21 19 21 14 C21 9 17 5 12 5 Z" fill="currentColor"/></svg>
@@ -114,9 +105,6 @@
   <button id="btnMenu" class="menu-btn" title="Altro" aria-label="Altro">⋯</button>
 </header>
 
-<!-- ============================================================
-     MENU MOBILE
-     ============================================================ -->
 <div class="mobile-menu" id="mobileMenu" hidden>
   <div class="mobile-menu-backdrop" id="mobileMenuBackdrop"></div>
   <div class="mobile-menu-panel" role="menu">
@@ -173,9 +161,6 @@
   </div>
 </div>
 
-<!-- ============================================================
-     LAYOUT
-     ============================================================ -->
 <main class="layout">
 
   <aside class="panel panel-left" id="panelLeft">
@@ -238,8 +223,8 @@
       <button class="ct-btn" id="ctZoomIn" title="Zoom +">
         <svg viewBox="0 0 24 24" class="ico"><path d="M11 5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z" fill="currentColor"/></svg>
       </button>
-      <button class="ct-btn" id="ctReset" title="Reset zoom">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M12 3 L20 10 V20 H14 V14 H10 V20 H4 V10 Z" fill="currentColor"/></svg>
+      <button class="ct-btn" id="ctReset" title="Adatta alla vista">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M4 4 H9 V6 H6 V9 H4 Z M15 4 H20 V9 H18 V6 H15 Z M4 15 H6 V18 H9 V20 H4 Z M18 15 H20 V20 H15 V18 H18 Z M8 8 H16 V16 H8 Z" fill="currentColor" fill-rule="evenodd"/></svg>
       </button>
       <span class="ct-sep"></span>
       <span class="status" id="statusText">Pronto</span>
@@ -248,9 +233,11 @@
 
     <div class="canvas-wrap" id="canvasWrap">
       <div class="canvas" id="canvas">
-        <svg class="links" id="links" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div class="nodes" id="nodes"></div>
-        <div class="overlay" id="overlay"></div>
+        <div class="canvas-content" id="canvasContent">
+          <svg class="links" id="links" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div class="nodes" id="nodes"></div>
+          <div class="overlay" id="overlay"></div>
+        </div>
       </div>
     </div>
   </section>
@@ -284,10 +271,19 @@
       <svg viewBox="0 0 24 24" class="ico"><path d="M4 5 H20 V8 H4 Z M4 11 H20 V14 H4 Z M4 17 H20 V20 H4 Z" fill="currentColor"/></svg>
       <span>Blocchi</span>
     </button>
-    <button class="mtab mtab-run" id="mtabRun">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/></svg>
-      <span>Esegui</span>
-    </button>
+
+    <div class="mtab-center" role="group" aria-label="Controlli esecuzione">
+      <button class="mtab-ctrl" id="mtabStep" title="Passo" aria-label="Passo">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M5 4 L15 12 L5 20 Z M17 4 L19 4 L19 20 L17 20 Z" fill="currentColor"/></svg>
+      </button>
+      <button class="mtab-ctrl mtab-ctrl-run" id="mtabRun" title="Esegui" aria-label="Esegui">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/></svg>
+      </button>
+      <button class="mtab-ctrl mtab-ctrl-stop" id="mtabStop" title="Stop" aria-label="Stop" disabled>
+        <svg viewBox="0 0 24 24" class="ico"><rect x="6" y="6" width="12" height="12" fill="currentColor"/></svg>
+      </button>
+    </div>
+
     <button class="mtab" data-toggle="panelRight">
       <svg viewBox="0 0 24 24" class="ico"><path d="M4 4 H20 V20 H4 Z M6 6 V18 H18 V6 Z" fill="currentColor" fill-rule="evenodd"/></svg>
       <span>Console</span>
@@ -295,7 +291,6 @@
   </nav>
 </main>
 
-<!-- PICKER -->
 <div class="modal-overlay" id="picker" hidden>
   <div class="modal picker">
     <div class="modal-header">
@@ -314,7 +309,6 @@
   </div>
 </div>
 
-<!-- TYPE MODAL -->
 <div class="modal-overlay" id="typeModal" hidden>
   <div class="modal type-modal">
     <div class="modal-header">
@@ -339,7 +333,6 @@
   </div>
 </div>
 
-<!-- FOR MODAL -->
 <div class="modal-overlay" id="forModal" hidden>
   <div class="modal for-modal">
     <div class="modal-header">
@@ -383,7 +376,6 @@
   </div>
 </div>
 
-<!-- VAR MODAL -->
 <div class="modal-overlay" id="varModal" hidden>
   <div class="modal">
     <div class="modal-header">
@@ -413,7 +405,6 @@
   </div>
 </div>
 
-<!-- CODE MODAL -->
 <div class="modal-overlay" id="cModal" hidden>
   <div class="modal wide">
     <div class="modal-header">
