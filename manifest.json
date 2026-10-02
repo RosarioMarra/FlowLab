@@ -1,5 +1,5 @@
 {
-  "name": "FlowLab — Editor Visuale",
+  "name": "FlowLab",
   "short_name": "FlowLab",
   "description": "Editor di flowchart visuale con esecuzione in tempo reale, variabili tipizzate, salvataggio su file .fl ed esportazione in C e Python.",
   "start_url": "./index.html",
