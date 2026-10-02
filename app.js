@@ -1,12 +1,16 @@
 /* ============================================================
-   FlowLab v22 — Logica applicazione completa
+   FlowLab v23 — Logica applicazione completa
+   Novità:
+   - Zoom centrato (mantiene il punto centrale fisso)
+   - Pinch-to-zoom con due dita su mobile
+   - Pannelli esclusivi su mobile (uno alla volta)
    ============================================================ */
 'use strict';
 
 const APP = {
   name: 'FlowLab',
-  version: '22.0',
-  storageKey: 'flowlab.project.v22',
+  version: '23.0',
+  storageKey: 'flowlab.project.v23',
   maxSteps: 5000,
   maxConsole: 800,
 };
@@ -41,6 +45,8 @@ const VGAP = 55;
 const BRANCH_OFFSET = 220;
 const MIN_NODE_W = 200;
 const MAX_NODE_W = 380;
+const MIN_ZOOM = 0.4;
+const MAX_ZOOM = 2.5;
 
 const STR_PRE = '\uE000';
 const STR_SUF = '\uE001';
@@ -441,7 +447,6 @@ function createNodeEl(node, idx) {
   label.textContent = def.label;
   body.appendChild(label);
 
-  /* Sublabel tipo per declare */
   if (node.type === 'declare' && node.declareType) {
     const sub = document.createElement('span');
     sub.className = 'node-sublabel';
@@ -468,7 +473,6 @@ function createNodeEl(node, idx) {
     body.appendChild(sub);
   }
 
-  /* For: display read-only + click apre popup */
   if (node.type === 'for') {
     const display = document.createElement('div');
     display.className = 'node-input for-display';
@@ -625,7 +629,6 @@ function buildLayout() {
     let lastId = null, lastCX = cx, lastBottomY = startY;
 
     for (const item of items) {
-      /* SEMPLICE */
       if (item.kind === 'simple') {
         const s = sizes.get(item.node.id);
         const x = cx - s.w / 2;
@@ -646,7 +649,6 @@ function buildLayout() {
         continue;
       }
 
-      /* IF */
       if (item.kind === 'if') {
         const s = sizes.get(item.node.id);
         const ifX = cx - s.w / 2;
@@ -668,7 +670,6 @@ function buildLayout() {
         const trueCX  = cx + BRANCH_OFFSET;
         const falseCX = cx - BRANCH_OFFSET;
 
-        /* Ramo Vero */
         let trueEnd = { bottomY: branchTopY, lastId: null, lastCX: trueCX, lastBottomY: branchTopY };
         if (item.trueBranch.length > 0) {
           const first = firstNodeOf(item.trueBranch);
@@ -686,7 +687,6 @@ function buildLayout() {
           trueEnd = layoutItems(item.trueBranch, trueCX, branchTopY);
         }
 
-        /* Ramo Falso */
         let falseEnd = { bottomY: branchTopY, lastId: null, lastCX: falseCX, lastBottomY: branchTopY };
         if (item.falseBranch.length > 0) {
           const first = firstNodeOf(item.falseBranch);
@@ -756,7 +756,6 @@ function buildLayout() {
         continue;
       }
 
-      /* LOOP */
       if (item.kind === 'loop') {
         const s = sizes.get(item.node.id);
         const lX = cx - s.w / 2;
@@ -817,7 +816,6 @@ function buildLayout() {
           plusPts.push({ x: bodyCX, y: (loopCY + mergeY) / 2, insertAt: item.bodyInsertAt });
         }
 
-        /* Loop-back simmetrico al body */
         const leftBackX = cx - BRANCH_OFFSET;
         links.push({
           from: { x: cx, y: mergeY, id: mergeId, isMerge: true },
@@ -988,8 +986,6 @@ function layoutAll() {
   const totalW = layout.maxX + 100;
   nodesEl.style.height = totalH + 'px';
   nodesEl.style.width = totalW + 'px';
-  canvasEl.style.minHeight = '';
-  canvasEl.style.minWidth = '';
   renderLinks(layout);
 }
 
@@ -1491,7 +1487,6 @@ async function executeBlock(items, ctx) {
     if (item.kind === 'loop') {
       const loopNode = item.node;
 
-      /* FOR */
       if (loopNode.type === 'for') {
         let name, start, end, step;
         const fd = loopNode.forData;
@@ -1536,7 +1531,6 @@ async function executeBlock(items, ctx) {
         continue;
       }
 
-      /* WHILE */
       if (loopNode.type === 'while') {
         let iter = 0;
         while (state.running) {
@@ -1558,7 +1552,6 @@ async function executeBlock(items, ctx) {
         continue;
       }
 
-      /* DO-WHILE */
       if (loopNode.type === 'dowhile') {
         let iter = 0;
         while (state.running) {
@@ -2260,17 +2253,37 @@ function generatePython() {
 }
 
 /* ============================================================
-   ZOOM / FULLSCREEN
+   ZOOM — v23: centrato sul viewport + pinch mobile
    ============================================================ */
 function setZoom(z) {
-  state.zoom = Math.max(0.5, Math.min(2, z));
-  canvasEl.style.transform = 'scale(' + state.zoom + ')';
-  canvasEl.style.transformOrigin = 'top left';
-  canvasEl.style.width = (100 / state.zoom) + '%';
-  canvasEl.style.height = (100 / state.zoom) + '%';
-  $('ctZoom').textContent = Math.round(state.zoom * 100) + '%';
-  setTimeout(layoutAll, 30);
+  const wrapW = canvasWrap.clientWidth;
+  const wrapH = canvasWrap.clientHeight;
+  const z1 = state.zoom;
+  const z2 = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+  if (Math.abs(z2 - z1) < 0.001) return;
+
+  /* Punto (in coordinat del contenuto) attualmente al centro dello schermo */
+  const s1x = canvasEl.scrollLeft;
+  const s1y = canvasEl.scrollTop;
+
+  state.zoom = z2;
+  canvasEl.style.transform = 'scale(' + z2 + ')';
+  canvasEl.style.transformOrigin = '0 0';
+  canvasEl.style.width  = (100 / z2) + '%';
+  canvasEl.style.height = (100 / z2) + '%';
+  $('ctZoom').textContent = Math.round(z2 * 100) + '%';
+
+  /* Nuovo scroll per mantenere lo stesso punto al centro */
+  const s2x = s1x + (wrapW / 2) * (1 / z1 - 1 / z2);
+  const s2y = s1y + (wrapH / 2) * (1 / z1 - 1 / z2);
+
+  /* Applica dopo il reflow */
+  requestAnimationFrame(() => {
+    canvasEl.scrollLeft = s2x;
+    canvasEl.scrollTop = s2y;
+  });
 }
+
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
     const el = document.documentElement;
@@ -2282,6 +2295,52 @@ function toggleFullscreen() {
     if (fn) { try { fn.call(document); } catch (e) {} }
   }
 }
+
+/* ============================================================
+   PINCH-TO-ZOOM (mobile, due dita)
+   ============================================================ */
+let pinchState = null;
+
+canvasEl.addEventListener('touchstart', function(e) {
+  if (e.touches.length === 2) {
+    /* Calcola distanza iniziale tra le due dita */
+    const t1 = e.touches[0], t2 = e.touches[1];
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    pinchState = {
+      lastDist: Math.hypot(dx, dy),
+      originalTouchAction: canvasEl.style.touchAction,
+    };
+    /* Blocca scroll nativo durante il pinch */
+    canvasEl.style.touchAction = 'none';
+  }
+}, { passive: true });
+
+canvasEl.addEventListener('touchmove', function(e) {
+  if (!pinchState || e.touches.length !== 2) return;
+  e.preventDefault();
+
+  const t1 = e.touches[0], t2 = e.touches[1];
+  const dx = t1.clientX - t2.clientX;
+  const dy = t1.clientY - t2.clientY;
+  const dist = Math.hypot(dx, dy);
+
+  if (pinchState.lastDist > 0) {
+    const ratio = dist / pinchState.lastDist;
+    setZoom(state.zoom * ratio);
+  }
+  pinchState.lastDist = dist;
+}, { passive: false });
+
+function endPinch(e) {
+  if (!pinchState) return;
+  if (e.touches && e.touches.length >= 2) return;
+  /* Ripristina touch-action originale */
+  canvasEl.style.touchAction = pinchState.originalTouchAction || 'pan-x pan-y';
+  pinchState = null;
+}
+canvasEl.addEventListener('touchend', endPinch);
+canvasEl.addEventListener('touchcancel', endPinch);
 
 /* ============================================================
    MENU MOBILE ⋯
@@ -2303,6 +2362,42 @@ function toggleMobileMenu() {
   const menu = $('mobileMenu');
   if (!menu) return;
   if (menu.hidden) openMobileMenu(); else closeMobileMenu();
+}
+
+/* ============================================================
+   PANNELLI MOBILE — esclusivi
+   ============================================================ */
+function closeAllPanels() {
+  ['panelLeft', 'panelRight'].forEach(id => {
+    const el = $(id);
+    if (el) el.classList.remove('open');
+  });
+  document.querySelectorAll('.mtab[data-toggle]').forEach(t => {
+    t.classList.remove('mtab-active');
+  });
+}
+function closeOtherPanel(exceptId) {
+  ['panelLeft', 'panelRight'].forEach(id => {
+    if (id === exceptId) return;
+    const el = $(id);
+    if (el) el.classList.remove('open');
+    const tab = document.querySelector('.mtab[data-toggle="' + id + '"]');
+    if (tab) tab.classList.remove('mtab-active');
+  });
+}
+function togglePanel(panelId, tabEl) {
+  const panel = $(panelId);
+  if (!panel) return;
+  const willOpen = !panel.classList.contains('open');
+
+  closeOtherPanel(panelId);
+  if (willOpen) {
+    panel.classList.add('open');
+    if (tabEl) tabEl.classList.add('mtab-active');
+  } else {
+    panel.classList.remove('open');
+    if (tabEl) tabEl.classList.remove('mtab-active');
+  }
 }
 
 /* ============================================================
@@ -2371,9 +2466,16 @@ $('speedRange').addEventListener('input', function(e) {
   $('speedLabel').textContent = SPEED_NAMES[state.speed];
 });
 
-$('ctZoomIn').addEventListener('click', () => setZoom(state.zoom + 0.1));
-$('ctZoomOut').addEventListener('click', () => setZoom(state.zoom - 0.1));
-$('ctReset').addEventListener('click', () => { setZoom(1); canvasEl.scrollTop = 0; canvasEl.scrollLeft = 0; });
+$('ctZoomIn').addEventListener('click', () => setZoom(state.zoom + 0.15));
+$('ctZoomOut').addEventListener('click', () => setZoom(state.zoom - 0.15));
+$('ctReset').addEventListener('click', () => {
+  setZoom(1);
+  /* Reset scroll al centro */
+  requestAnimationFrame(() => {
+    canvasEl.scrollLeft = 0;
+    canvasEl.scrollTop = 0;
+  });
+});
 $('btnClearConsole').addEventListener('click', cclear);
 
 /* Menu mobile ⋯ */
@@ -2438,13 +2540,13 @@ document.querySelectorAll('.card[data-add]').forEach(function(c) {
       openTypePicker(null, (tipo) => {
         addNode('declare', atIndex, { declareType: tipo });
         haptic();
-        if (window.innerWidth <= 800) $('panelLeft').classList.remove('open');
+        if (window.innerWidth <= 800) closeAllPanels();
       });
       return;
     }
     addNode(type, atIndex);
     haptic();
-    if (window.innerWidth <= 800) $('panelLeft').classList.remove('open');
+    if (window.innerWidth <= 800) closeAllPanels();
   });
 });
 
@@ -2476,13 +2578,32 @@ $('typeClose').addEventListener('click', closeTypePicker);
 $('typeCancel').addEventListener('click', closeTypePicker);
 typeModal.addEventListener('click', e => { if (e.target === typeModal) closeTypePicker(); });
 
-/* Bottom tab mobile */
+/* Bottom tab mobile — esclusivi */
 document.querySelectorAll('.mtab[data-toggle]').forEach(function(t) {
-  t.addEventListener('click', () => $(t.dataset.toggle).classList.toggle('open'));
+  t.addEventListener('click', function() {
+    togglePanel(t.dataset.toggle, t);
+  });
 });
+
+/* Chiudi pannelli al tocco sul canvas (mobile) */
+canvasEl.addEventListener('pointerdown', function() {
+  if (window.innerWidth > 800) return;
+  if (document.querySelector('.panel.open')) {
+    closeAllPanels();
+  }
+});
+
+/* Panel close button */
 document.querySelectorAll('.panel-toggle[data-close]').forEach(function(b) {
-  b.addEventListener('click', () => $(b.dataset.close).classList.remove('open'));
+  b.addEventListener('click', function() {
+    const id = b.dataset.close;
+    const panel = $(id);
+    if (panel) panel.classList.remove('open');
+    const tab = document.querySelector('.mtab[data-toggle="' + id + '"]');
+    if (tab) tab.classList.remove('mtab-active');
+  });
 });
+
 const mtabRun = $('mtabRun');
 if (mtabRun) mtabRun.addEventListener('click', runAll);
 
@@ -2551,9 +2672,9 @@ document.addEventListener('keydown', function(e) {
     closeTypePicker();
     closeForDialog();
     closeMobileMenu();
+    closeAllPanels();
     state.insertAt = -1;
     state.insertMode = null;
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('open'));
   }
 }, true);
 
@@ -2563,7 +2684,7 @@ function handleResize() {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     if (window.innerWidth > 800) {
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('open'));
+      closeAllPanels();
       closeMobileMenu();
     }
     layoutAll();
@@ -2592,7 +2713,6 @@ window.addEventListener('beforeunload', function(e) {
 function init() {
   clog('FlowLab v' + APP.version + ' — pronto', 'sys');
 
-  /* Leggi handle salvato */
   (async () => {
     const stored = await loadHandleFromDB(FILE_HANDLE_KEY);
     if (stored) {
@@ -2607,7 +2727,7 @@ function init() {
     }
   })();
 
-  /* Registrazione Service Worker */
+  /* Service Worker */
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js')
@@ -2616,7 +2736,6 @@ function init() {
     });
   }
 
-  /* Carica progetto */
   const loaded = loadAuto();
   if (!loaded || state.nodes.length === 0) {
     state.nodes = [
@@ -2639,8 +2758,8 @@ function init() {
     statusText.textContent = 'Pronto';
     statusSteps.textContent = '0 step';
     if (!loaded) saveAuto();
+    clog('Zoom: usa + / − o pinch con due dita', 'sys');
     clog('Clicca sul blocco For per configurarlo', 'sys');
-    clog('Clicca su un ramo o sul + per inserire un blocco', 'sys');
   });
 
   try {

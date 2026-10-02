@@ -1,5 +1,6 @@
 /* ============================================================
-   FlowLab v22 — Stylesheet completo
+   FlowLab v23 — Stylesheet completo
+   Novità: touch-action su .canvas per pinch-zoom custom
    ============================================================ */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -69,7 +70,6 @@ input, select, textarea { font-family: inherit; }
   z-index: 100;
 }
 
-/* Brand con logo */
 .brand {
   display: flex;
   align-items: center;
@@ -97,7 +97,6 @@ input, select, textarea { font-family: inherit; }
   color: var(--brand);
 }
 
-/* Toolbar */
 .toolbar {
   flex: 1;
   display: flex;
@@ -154,7 +153,6 @@ input, select, textarea { font-family: inherit; }
 .speed input[type=range] { width: 70px; accent-color: var(--accent); }
 .speed-val { color: var(--text); font-weight: 600; min-width: 60px; }
 
-/* Dirty indicator sul pulsante Salva */
 #btnSave.tb-dirty::after {
   content: '';
   position: absolute;
@@ -167,7 +165,6 @@ input, select, textarea { font-family: inherit; }
 }
 @keyframes pulse-dirty { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
-/* Menu button ⋯ (classe dedicata) */
 .menu-btn {
   display: none;
   width: 42px;
@@ -363,7 +360,6 @@ input, select, textarea { font-family: inherit; }
   padding: 16px;
 }
 
-/* Categorie blocchi */
 .cat { margin-bottom: 14px; }
 .cat-title {
   font-size: 10.5px;
@@ -456,6 +452,8 @@ input, select, textarea { font-family: inherit; }
 }
 
 .canvas-wrap { flex: 1; position: relative; overflow: hidden; min-height: 0; }
+
+/* ⭐ Fix: touch-action per pinch custom */
 .canvas {
   position: absolute;
   inset: 0;
@@ -464,6 +462,9 @@ input, select, textarea { font-family: inherit; }
   background-image: radial-gradient(circle, #d8dee6 1px, transparent 1px);
   background-size: 20px 20px;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  transform-origin: 0 0;
+  will-change: transform;
 }
 .links {
   position: absolute;
@@ -481,7 +482,6 @@ input, select, textarea { font-family: inherit; }
 }
 .overlay > * { pointer-events: auto; }
 
-/* Link SVG */
 .link {
   fill: none;
   stroke-width: 2;
@@ -533,7 +533,6 @@ input, select, textarea { font-family: inherit; }
 }
 .merge-circle.active { border-color: #16a34a; background: #16a34a; }
 
-/* Nodi */
 .node {
   position: absolute;
   min-width: 180px;
@@ -727,7 +726,6 @@ input, select, textarea { font-family: inherit; }
 .plus:hover { background: var(--accent); color: #fff; }
 @media (hover: none) { .plus { opacity: .85; } }
 
-/* Variabili */
 .vars-body { padding: 8px; }
 .var-row {
   display: grid;
@@ -780,7 +778,6 @@ input, select, textarea { font-family: inherit; }
 .add-var .ico { width: 14px; height: 14px; }
 .add-var:hover { background: var(--bg-hover); color: var(--text); border-style: solid; }
 
-/* Console */
 .console-header { border-top: 1px solid var(--border); }
 .console {
   flex: 1;
@@ -808,7 +805,6 @@ input, select, textarea { font-family: inherit; }
 .line.info { color: var(--accent); }
 .line.step { color: var(--text-dim); }
 
-/* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1040,7 +1036,6 @@ input, select, textarea { font-family: inherit; }
    RESPONSIVE
    ============================================================ */
 
-/* Tablet stretto */
 @media (max-width: 1100px) {
   :root { --panel-w: 220px; }
   .tb .lbl { display: none; }
@@ -1050,7 +1045,6 @@ input, select, textarea { font-family: inherit; }
   .speed { padding: 4px 8px; }
 }
 
-/* Mobile */
 @media (max-width: 800px) {
   :root {
     --topbar-h: 54px;
@@ -1089,6 +1083,7 @@ input, select, textarea { font-family: inherit; }
     bottom: var(--mobile-tabs-h);
   }
 
+  /* Pannelli drawer + backdrop */
   .panel {
     position: absolute;
     top: 0; bottom: 0;
@@ -1127,6 +1122,7 @@ input, select, textarea { font-family: inherit; }
     font-size: 10.5px;
     font-weight: 600;
     padding: 6px 4px;
+    touch-action: manipulation;
   }
   .mtab .ico { width: 20px; height: 20px; }
   .mtab-run {
@@ -1135,6 +1131,9 @@ input, select, textarea { font-family: inherit; }
     margin: 6px 10px;
     border-radius: var(--radius);
   }
+  /* Evidenzia tab attivo */
+  .mtab.mtab-active { color: var(--accent); }
+  .mtab.mtab-active .ico { color: var(--accent); }
 
   .canvas-toolbar { padding: 6px 10px; gap: 4px; }
   .picker-body { grid-template-columns: 1fr; gap: 10px; }
@@ -1143,7 +1142,6 @@ input, select, textarea { font-family: inherit; }
   .for-row { grid-template-columns: 1fr; gap: 10px; }
 }
 
-/* Smartphone piccoli */
 @media (max-width: 400px) {
   .topbar { padding: 0 6px; gap: 4px; }
   .toolbar { gap: 3px; }
