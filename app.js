@@ -1,9 +1,11 @@
 /* ============================================================
-   FlowLab v24 — Layout tree-based (Reingold-Tilford)
-   - Ogni sottoalbero riceve una larghezza dedicata
-   - Rami Vero/Falso affiancati, mai sovrapposti
-   - Tratto orizzontale minimo garantito per ogni ramo
-   - Operatori logici: AND/OR/NOT case-insensitive + &&, ||, !
+   FlowLab v24 — Layout che non si sovrappone MAI
+   - subtreeInfo() ritorna {left, right}: estensione reale del
+     sottoalbero rispetto al suo centro di layout
+   - I centri dei rami FALSE/TRUE sono calcolati con vincoli
+     espliciti di non-sovrapposizione + distanza minima dal vertice
+   - Cache per evitare ricalcoli O(N²)
+   - Operatori logici: AND/OR/NOT (case-insensitive) + &&, ||, !
    ============================================================ */
 'use strict';
 
@@ -36,17 +38,16 @@ const SPEED_NAMES = { 1: 'Lenta', 2: 'Lenta', 3: 'Normale', 4: 'Veloce', 5: 'Tur
 const TYPE_DEFAULTS = { Integer: 0, Real: 0.0, String: '', Boolean: false, Character: '\0' };
 const VALID_TYPE_RE = /^(Integer|Real|String|Boolean|Character|Int|Float|Double|Bool|Char|Str|Num|Long)$/i;
 
-/* ---- Layout constants ---- */
-const VGAP           = 40;
-const HGAP           = 55;
-const MIN_BRANCH_W   = 110;
-const MIN_HORIZ_LEN  = 60;   /* lunghezza minima del tratto orizzontale dal vertice IF */
-const EMPTY_BRANCH_H = 22;
-const MERGE_GAP      = 22;
+const VGAP            = 26;
+const HGAP            = 22;   /* spazio orizzontale minimo tra rami fratelli */
+const MIN_HORIZ_LEN   = 30;   /* tratto orizzontale minimo dal vertice IF */
+const BACK_EDGE_LEN   = 30;   /* spazio a sinistra del loop per il back-edge */
+const EMPTY_BRANCH_H  = 10;
+const MERGE_GAP       = 10;
 
-const MIN_NODE_W = 180;
-const MAX_NODE_W = 340;
-const MIN_ZOOM = 0.12;
+const MIN_NODE_W = 170;
+const MAX_NODE_W = 320;
+const MIN_ZOOM = 0.10;
 const MAX_ZOOM = 2.5;
 
 const TOP_ANCHOR_Y = 24;
@@ -118,7 +119,6 @@ function updateSaveIndicator() {
 }
 function markSaved() { state.dirty = false; updateSaveIndicator(); }
 
-/* INDEXEDDB */
 function openHandleDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(HANDLE_DB, 1);
@@ -206,25 +206,18 @@ function measureNode(node) {
   let padX = 46;
   switch (def.shape) {
     case 'parallelogram': padX = 100; break;
-    case 'diamond': padX = 120; break;
+    case 'diamond': padX = 110; break;
     case 'hex': padX = 100; break;
   }
   const extraH = node.declareType ? 16 : 0;
   let w = Math.min(MAX_NODE_W, Math.max(MIN_NODE_W, Math.max(labelW, contentW) + padX));
   let h = 56 + extraH;
-  if (def.shape === 'diamond') h = 110;
+  if (def.shape === 'diamond') h = 100;
   else if (def.shape === 'oval') h = 52;
   return { w: Math.ceil(w), h: Math.ceil(h) };
 }
 
-/* ============================================================
-   VALUTATORE
-   Operatori logici supportati:
-     AND / and / And  →  &&
-     OR  / or  / Or   →  ||
-     NOT / not / Not  →  !
-   Anche &&, ||, ! direttamente.
-   ============================================================ */
+/* Valutatore */
 function valueLiteral(name) {
   if (!(name in state.variables)) throw new Error('Variabile "' + name + '" non definita');
   const v = state.variables[name].value;
@@ -255,7 +248,6 @@ function evaluate(src) {
   };
   code = code.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (name) => {
     if (name === 'true' || name === 'false' || name === 'null' || name === 'undefined') return name;
-    /* Operatori logici: passa-through (case-insensitive) */
     if (/^(and|or|not)$/i.test(name)) return name;
     if (name === 'To' || name === 'Step') return name;
     if (BUILTINS[name]) return BUILTINS[name];
@@ -270,7 +262,6 @@ function evaluate(src) {
     throw new Error('Variabile "' + name + '" non definita');
   });
   strings.forEach((s, i) => { code = code.split(STR_PRE + i + STR_SUF).join(JSON.stringify(s)); });
-  /* Traduzione operatori logici (case-insensitive) */
   code = code
     .replace(/\bAND\b/gi, '&&')
     .replace(/\bOR\b/gi, '||')
@@ -517,12 +508,7 @@ function parseBlock(nodes, start, end) {
 function firstNodeOf(items) { for (const it of items) if (it.node) return it.node; return null; }
 
 /* ============================================================
-   LAYOUT — Reingold-Tilford con tratto orizzontale minimo
-   ------------------------------------------------------------
-   Ogni sottoalbero ha la sua larghezza (subWidth).
-   I rami Vero (dx) e Falso (sx) sono affiancati con HGAP.
-   Il tratto orizzontale dal vertice IF al centro del ramo è
-   garantito >= MIN_HORIZ_LEN.
+   LAYOUT — no overlap garantito
    ============================================================ */
 function buildLayout() {
   const sizes = new Map();
@@ -537,42 +523,61 @@ function buildLayout() {
   const merges = [];
   const labels = [];
   const plusPts = [];
+  const infoCache = new Map();
 
-  /* Larghezza totale richiesta da un blocco di items */
-  function subWidth(items) {
-    let w = MIN_NODE_W;
+  /* Ritorna {left, right}: quanto il blocco si estende a sinistra/destra
+     rispetto alla sua "center line" (dove passano il flow verticale). */
+  function subtreeInfo(items) {
+    if (infoCache.has(items)) return infoCache.get(items);
+    let left = 0, right = 0;
     for (const it of items) {
       if (it.kind === 'simple') {
-        w = Math.max(w, sizes.get(it.node.id).w);
+        const sw = sizes.get(it.node.id).w;
+        left = Math.max(left, sw / 2);
+        right = Math.max(right, sw / 2);
       } else if (it.kind === 'if') {
-        const tw = it.trueBranch.length ? subWidth(it.trueBranch) : MIN_BRANCH_W;
-        const fw = it.falseBranch.length ? subWidth(it.falseBranch) : MIN_BRANCH_W;
-        const minEdgeDist = MIN_HORIZ_LEN + MIN_NODE_W * 0.485;
-        const distF = Math.max(minEdgeDist, fw / 2 + HGAP / 2);
-        const distT = Math.max(minEdgeDist, tw / 2 + HGAP / 2);
-        w = Math.max(w, distF + distT);
+        const sw = sizes.get(it.node.id).w;
+        const fInfo = subtreeInfo(it.falseBranch);
+        const tInfo = subtreeInfo(it.trueBranch);
+        const minAB = MIN_HORIZ_LEN + sw * 0.485;
+        /* Vincolo non-sovrapposizione: A + B >= fR + tL + HGAP */
+        const ABmin = Math.max(2 * minAB, fInfo.right + tInfo.left + HGAP);
+        /* Distribuzione bilanciata (senza sbilanciare il bbox) */
+        let A = (ABmin + tInfo.right - fInfo.left) / 2;
+        let B = ABmin - A;
+        if (A < minAB) { A = minAB; B = ABmin - A; }
+        if (B < minAB) { B = minAB; A = ABmin - B; }
+        const L = Math.max(sw / 2, A + fInfo.left);
+        const R = Math.max(sw / 2, B + tInfo.right);
+        left = Math.max(left, L);
+        right = Math.max(right, R);
       } else if (it.kind === 'loop') {
-        const bw = it.body.length ? subWidth(it.body) : MIN_BRANCH_W;
-        const minEdgeDist = MIN_HORIZ_LEN + MIN_NODE_W * 0.485;
-        const distB = Math.max(minEdgeDist, bw / 2 + HGAP / 2);
-        w = Math.max(w, distB + HGAP);
+        const sw = sizes.get(it.node.id).w;
+        const bInfo = subtreeInfo(it.body);
+        const minB = MIN_HORIZ_LEN + sw * 0.485;
+        const B = minB;
+        /* Corpo a destra di B, back-edge a sinistra */
+        const L = Math.max(sw / 2, BACK_EDGE_LEN, B - bInfo.left);
+        const R = Math.max(sw / 2, B + bInfo.right);
+        left = Math.max(left, L);
+        right = Math.max(right, R);
       }
     }
-    return w;
+    const res = { left, right };
+    infoCache.set(items, res);
+    return res;
   }
 
   const tree = parseBlock(state.nodes, 0, state.nodes.length);
-  const totalW = subWidth(tree);
-  const centerX = 40 + totalW / 2;
+  const rootInfo = subtreeInfo(tree);
+  const centerX = 40 + rootInfo.left;
 
-  /* Layout ricorsivo */
   function layoutItems(items, cx, startY) {
     let y = startY;
     let lastId = null, lastCX = cx, lastBottomY = startY;
 
     for (const item of items) {
-
-      /* ---------- SEMPLICE ---------- */
+      /* --- SEMPLICE --- */
       if (item.kind === 'simple') {
         const s = sizes.get(item.node.id);
         positions.set(item.node.id, { x: cx - s.w / 2, y, w: s.w, h: s.h });
@@ -589,7 +594,7 @@ function buildLayout() {
         continue;
       }
 
-      /* ---------- IF ---------- */
+      /* --- IF --- */
       if (item.kind === 'if') {
         const s = sizes.get(item.node.id);
         const ifX = cx - s.w / 2;
@@ -610,18 +615,19 @@ function buildLayout() {
         const rightVX = ifX + s.w * 0.97;
         const leftVX  = ifX + s.w * 0.03;
 
-        const tW = item.trueBranch.length ? subWidth(item.trueBranch) : MIN_BRANCH_W;
-        const fW = item.falseBranch.length ? subWidth(item.falseBranch) : MIN_BRANCH_W;
-        /* Tratto orizzontale minimo garantito dal vertice IF */
-        const horizOffset = s.w * 0.485;
-        const minEdgeDistT = MIN_HORIZ_LEN + horizOffset;
-        const minEdgeDistF = MIN_HORIZ_LEN + horizOffset;
-        const distT = Math.max(minEdgeDistT, tW / 2 + HGAP / 2);
-        const distF = Math.max(minEdgeDistF, fW / 2 + HGAP / 2);
-        const trueCX  = cx + distT;
-        const falseCX = cx - distF;
+        const fInfo = subtreeInfo(item.falseBranch);
+        const tInfo = subtreeInfo(item.trueBranch);
+        const minAB = MIN_HORIZ_LEN + s.w * 0.485;
+        const ABmin = Math.max(2 * minAB, fInfo.right + tInfo.left + HGAP);
+        let A = (ABmin + tInfo.right - fInfo.left) / 2;
+        let B = ABmin - A;
+        if (A < minAB) { A = minAB; B = ABmin - A; }
+        if (B < minAB) { B = minAB; A = ABmin - B; }
 
-        /* --- FALSE (sinistra) --- */
+        const falseCX = cx - A;
+        const trueCX  = cx + B;
+
+        /* FALSE */
         let falseBottomY, falseLastId, falseLastBottomY;
         if (item.falseBranch.length > 0) {
           const first = firstNodeOf(item.falseBranch);
@@ -646,7 +652,7 @@ function buildLayout() {
           falseLastBottomY = falseBottomY;
         }
 
-        /* --- TRUE (destra) --- */
+        /* TRUE */
         let trueBottomY, trueLastId, trueLastBottomY;
         if (item.trueBranch.length > 0) {
           const first = firstNodeOf(item.trueBranch);
@@ -671,12 +677,11 @@ function buildLayout() {
           trueLastBottomY = trueBottomY;
         }
 
-        /* --- MERGE --- */
+        /* MERGE */
         const mergeY = Math.max(trueBottomY, falseBottomY, branchTopY) + MERGE_GAP;
         const mergeId = 'merge_' + item.node.id;
         merges.push({ id: mergeId, x: cx, y: mergeY });
 
-        /* FALSE → merge */
         if (falseLastId) {
           links.push({
             from: { x: falseCX, y: falseLastBottomY, id: falseLastId },
@@ -697,7 +702,6 @@ function buildLayout() {
           plusPts.push({ x: falseCX, y: (ifCY + mergeY) / 2, insertAt: item.falseInsertAt, insertMode: falseMode });
         }
 
-        /* TRUE → merge */
         if (trueLastId) {
           links.push({
             from: { x: trueCX, y: trueLastBottomY, id: trueLastId },
@@ -717,7 +721,6 @@ function buildLayout() {
           plusPts.push({ x: trueCX, y: (ifCY + mergeY) / 2, insertAt: item.trueInsertAt });
         }
 
-        /* Etichette Vero/Falso a metà tratto orizzontale */
         labels.push({ x: (leftVX + falseCX) / 2, y: ifCY - 10, text: 'Falso', type: 'false' });
         labels.push({ x: (rightVX + trueCX) / 2, y: ifCY - 10, text: 'Vero',  type: 'true'  });
 
@@ -726,7 +729,7 @@ function buildLayout() {
         continue;
       }
 
-      /* ---------- LOOP ---------- */
+      /* --- LOOP --- */
       if (item.kind === 'loop') {
         const s = sizes.get(item.node.id);
         const lX = cx - s.w / 2;
@@ -747,11 +750,8 @@ function buildLayout() {
         const rightVX = lX + s.w * 0.97;
         const leftVX = lX + s.w * 0.03;
 
-        const bW = item.body.length ? subWidth(item.body) : MIN_BRANCH_W;
-        const horizOffset = s.w * 0.485;
-        const minEdgeDist = MIN_HORIZ_LEN + horizOffset;
-        const distB = Math.max(minEdgeDist, bW / 2 + HGAP / 2);
-        const bodyCX = cx + distB;
+        const B = MIN_HORIZ_LEN + s.w * 0.485;
+        const bodyCX = cx + B;
 
         let bodyEnd;
         if (item.body.length > 0) {
@@ -794,7 +794,7 @@ function buildLayout() {
           });
         }
 
-        const leftBackX = cx - 30;
+        const leftBackX = cx - BACK_EDGE_LEN;
         links.push({
           from: { x: cx, y: mergeY, id: mergeId, isMerge: true },
           to:   { x: leftVX, y: loopCY, id: item.node.id },
@@ -815,7 +815,6 @@ function buildLayout() {
 
   layoutItems(tree, centerX, 40);
 
-  /* Bounding box */
   let minX = Infinity, maxX = -Infinity, maxY = 0;
   positions.forEach(p => {
     minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x + p.w);
@@ -858,7 +857,6 @@ function buildLayout() {
   return { positions, links, merges, labels, plusPts, minX, maxX, maxY, centerX: (minX + maxX) / 2 };
 }
 
-/* RENDER LINKS */
 function renderLinks(layout) {
   linksEl.innerHTML = ''; overlayEl.innerHTML = '';
   const W = state.natW || 800, H = state.natH || 600;
@@ -937,7 +935,6 @@ function renderLinks(layout) {
   });
 }
 
-/* LAYOUT ALL */
 function layoutAll() {
   const layout = buildLayout();
   layout.positions.forEach((p, id) => {
@@ -969,7 +966,6 @@ function render() {
   requestAnimationFrame(() => { layoutAll(); setTimeout(layoutAll, 80); });
 }
 
-/* PAN & ZOOM */
 function applyTransform() {
   canvasContentEl.style.transform =
     'translate(' + state.panX + 'px, ' + state.panY + 'px) scale(' + state.zoom + ')';
@@ -999,7 +995,7 @@ function fitToView() {
   const wrapW = canvasEl.clientWidth, wrapH = canvasEl.clientHeight;
   const contentW = Math.max(1, state.contentMaxX - state.contentMinX);
   const contentH = Math.max(1, state.contentMaxY - state.contentMinY);
-  const padX = 40, padY = TOP_ANCHOR_Y + 20;
+  const padX = 30, padY = TOP_ANCHOR_Y + 15;
   const zx = (wrapW - padX) / contentW;
   const zy = (wrapH - padY) / contentH;
   const newZoom = Math.max(MIN_ZOOM, Math.min(1, Math.min(zx, zy)));
@@ -1122,7 +1118,6 @@ function endTouch(e) {
 canvasEl.addEventListener('touchend', endTouch);
 canvasEl.addEventListener('touchcancel', endTouch);
 
-/* POPUP TIPO */
 function openTypePicker(currentType, onConfirm) {
   typeModal.hidden = false;
   typeModal.querySelectorAll('.type-btn').forEach(b => {
@@ -1138,7 +1133,6 @@ function openTypePicker(currentType, onConfirm) {
 }
 function closeTypePicker() { if (typeModal._close) typeModal._close(); else typeModal.hidden = true; }
 
-/* POPUP FOR */
 function openForDialog(node) {
   state.editingForId = node.id;
   const d = node.forData || {};
@@ -1178,7 +1172,6 @@ function requestInsert(atIndex, mode) {
   state.insertAt = atIndex; state.insertMode = mode || null; pickerEl.hidden = false;
 }
 
-/* GESTIONE NODI */
 function addNode(type, atIndex, opts) {
   opts = opts || {};
   const def = DEFS[type]; if (!def) { toast('Tipo sconosciuto'); return; }
@@ -1247,7 +1240,6 @@ function ensureStartEnd() {
   state.nodes = [s].concat(mid).concat([e]);
 }
 
-/* VARIABILI */
 function setVar(name, value, type) {
   const t = type || (state.varDefs[name] && state.varDefs[name].type) || inferType(value);
   state.variables[name] = { value, type: t };
@@ -1295,7 +1287,6 @@ function renderVars() {
   });
 }
 
-/* INPUT UTENTE */
 function requestInput(prompt) {
   return new Promise(resolve => {
     clog(prompt, 'in');
@@ -1321,7 +1312,6 @@ function requestInput(prompt) {
   });
 }
 
-/* HIGHLIGHT */
 function highlight(id, cls) {
   cls = cls || 'running';
   nodesEl.querySelectorAll('.node').forEach(el => el.classList.remove('running', 'error'));
@@ -1349,7 +1339,6 @@ function highlight(id, cls) {
   }
 }
 
-/* COERCIZIONE */
 function coerceValue(v, type) {
   if (type === 'Integer') {
     if (typeof v === 'number') return Math.trunc(v);
@@ -1377,7 +1366,6 @@ function coerceValue(v, type) {
   return v;
 }
 
-/* ESECUZIONE */
 async function execSimple(node) {
   const text = (node.text || '').trim();
   switch (node.type) {
@@ -1643,7 +1631,6 @@ function toggleRunUI(running) {
   const mt = $('mtabStop'); if (mt) mt.disabled = !running;
 }
 
-/* HISTORY */
 function snapshot() { return clone({ nodes: state.nodes, varDefs: state.varDefs }); }
 function pushHistory() {
   state.history = state.history.slice(0, state.histIdx + 1);
@@ -1669,7 +1656,6 @@ function redo() {
   state.dirty = true; updateSaveIndicator(); toast('Ripetuto');
 }
 
-/* SALVA / CARICA */
 let saveTimer = null;
 function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveAuto, 500); }
 function getProjectData() { return { app: APP.name, format: 'flowlab', version: APP.version, savedAt: new Date().toISOString(), nodes: state.nodes, varDefs: state.varDefs }; }
@@ -1793,7 +1779,6 @@ async function newProject() {
   doNewProject();
 }
 
-/* EXPORT PNG */
 function exportPNG() {
   const layout = buildLayout();
   if (state.nodes.length === 0) { toast('Niente da esportare'); return; }
@@ -1884,7 +1869,6 @@ function exportPNG() {
   }, 'image/png');
 }
 
-/* GENERAZIONE C */
 function cTypeOf(t) {
   switch (t) {
     case 'Integer': return 'int'; case 'Real': return 'double';
@@ -2019,7 +2003,6 @@ function generateC() {
   return lines.join('\n');
 }
 
-/* GENERAZIONE PYTHON */
 function pyExpr(expr) {
   let e = String(expr).trim();
   e = e.replace(/\bAND\b/gi, 'and').replace(/\bOR\b/gi, 'or').replace(/\bNOT\b/gi, 'not');
@@ -2140,7 +2123,6 @@ function generatePython() {
   return lines.join('\n');
 }
 
-/* FULLSCREEN */
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
     const el = document.documentElement;
@@ -2153,7 +2135,6 @@ function toggleFullscreen() {
   }
 }
 
-/* MENU MOBILE / PANNELLI */
 function closeMobileMenu() { const menu = $('mobileMenu'); if (menu) menu.hidden = true; }
 function openMobileMenu() {
   const menu = $('mobileMenu'); if (!menu) return;
@@ -2185,7 +2166,6 @@ function togglePanel(panelId, tabEl) {
   else { panel.classList.remove('open'); if (tabEl) tabEl.classList.remove('mtab-active'); }
 }
 
-/* EVENT LISTENERS */
 $('btnRun').addEventListener('click', runAll);
 $('btnStep').addEventListener('click', stepOnce);
 $('btnStop').addEventListener('click', stopRun);
@@ -2402,7 +2382,6 @@ window.addEventListener('beforeunload', function(e) {
   if (state.dirty) { e.preventDefault(); e.returnValue = ''; return ''; }
 });
 
-/* INIT */
 function init() {
   clog('FlowLab v' + APP.version + ' — pronto', 'sys');
   (async () => {
