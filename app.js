@@ -1,19 +1,16 @@
 /* ============================================================
-   FlowLab v24 — Logica completa
-   Fix:
-   - Centratura basata sul bounding box reale del contenuto
-   - START/END non trascinabili (restano ancorati al flow)
-   - Zoom rotellina fluido + pulsante "Adatta alla vista"
-   - Mobile: barra controlli Esegui/Passo/Stop al centro
+   FlowLab v24 — Layout tree-based (Reingold-Tilford)
+   - Ogni sottoalbero riceve una larghezza dedicata
+   - Rami Vero/Falso affiancati, mai sovrapposti
+   - Tratto orizzontale minimo garantito per ogni ramo
+   - Operatori logici: AND/OR/NOT case-insensitive + &&, ||, !
    ============================================================ */
 'use strict';
 
 const APP = {
-  name: 'FlowLab',
-  version: '24.0',
+  name: 'FlowLab', version: '24.0',
   storageKey: 'flowlab.project.v24',
-  maxSteps: 5000,
-  maxConsole: 800,
+  maxSteps: 5000, maxConsole: 800,
 };
 
 const DEFS = {
@@ -39,11 +36,17 @@ const SPEED_NAMES = { 1: 'Lenta', 2: 'Lenta', 3: 'Normale', 4: 'Veloce', 5: 'Tur
 const TYPE_DEFAULTS = { Integer: 0, Real: 0.0, String: '', Boolean: false, Character: '\0' };
 const VALID_TYPE_RE = /^(Integer|Real|String|Boolean|Character|Int|Float|Double|Bool|Char|Str|Num|Long)$/i;
 
-const VGAP = 55;
-const BRANCH_OFFSET = 220;
-const MIN_NODE_W = 200;
-const MAX_NODE_W = 380;
-const MIN_ZOOM = 0.15;
+/* ---- Layout constants ---- */
+const VGAP           = 40;
+const HGAP           = 55;
+const MIN_BRANCH_W   = 110;
+const MIN_HORIZ_LEN  = 60;   /* lunghezza minima del tratto orizzontale dal vertice IF */
+const EMPTY_BRANCH_H = 22;
+const MERGE_GAP      = 22;
+
+const MIN_NODE_W = 180;
+const MAX_NODE_W = 340;
+const MIN_ZOOM = 0.12;
 const MAX_ZOOM = 2.5;
 
 const TOP_ANCHOR_Y = 24;
@@ -57,39 +60,13 @@ const HANDLE_STORE = 'handles';
 const FILE_HANDLE_KEY = 'flowlab-file';
 
 const state = {
-  nodes: [],
-  variables: {},
-  varDefs: {},
-  history: [],
-  histIdx: -1,
-  running: false,
-  paused: false,
-  currentIndex: -1,
-  totalSteps: 0,
-
-  /* Viewport */
-  zoom: 1,
-  panX: 0,
-  panY: 0,
-  natW: 800,
-  natH: 600,
-  hasCentered: false,
-
-  /* Bounding box reale del contenuto (world coords) */
-  contentMinX: 0,
-  contentMaxX: 0,
-  contentMinY: 0,
-  contentMaxY: 0,
-
-  selectedId: null,
-  insertAt: -1,
-  insertMode: null,
-  speed: 3,
-  codeLang: 'c',
-  dirty: false,
-  currentFileName: 'programma.fl',
-  fileHandle: null,
-  editingForId: null,
+  nodes: [], variables: {}, varDefs: {}, history: [], histIdx: -1,
+  running: false, paused: false, currentIndex: -1, totalSteps: 0,
+  zoom: 1, panX: 0, panY: 0, natW: 800, natH: 600, hasCentered: false,
+  contentMinX: 0, contentMaxX: 0, contentMinY: 0, contentMaxY: 0,
+  selectedId: null, insertAt: -1, insertMode: null,
+  speed: 3, codeLang: 'c', dirty: false,
+  currentFileName: 'programma.fl', fileHandle: null, editingForId: null,
 };
 
 const $ = id => document.getElementById(id);
@@ -117,8 +94,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 
 let toastTimer = null;
 function toast(msg, ms = 2000) {
-  toastEl.textContent = msg;
-  toastEl.hidden = false;
+  toastEl.textContent = msg; toastEl.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toastEl.hidden = true; }, ms);
 }
@@ -135,19 +111,14 @@ function clog(text, cls = 'out') {
   consoleEl.scrollTop = consoleEl.scrollHeight;
 }
 function cclear() { consoleEl.innerHTML = ''; }
-
-/* DIRTY */
 function updateSaveIndicator() {
-  const btn = $('btnSave');
-  if (!btn) return;
+  const btn = $('btnSave'); if (!btn) return;
   btn.classList.toggle('tb-dirty', state.dirty);
   btn.title = state.dirty ? 'Salva (modifiche non salvate)' : 'Salva';
 }
 function markSaved() { state.dirty = false; updateSaveIndicator(); }
 
-/* ============================================================
-   INDEXEDDB
-   ============================================================ */
+/* INDEXEDDB */
 function openHandleDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(HANDLE_DB, 1);
@@ -160,47 +131,34 @@ function openHandleDB() {
   });
 }
 async function saveHandleToDB(key, handle) {
-  try {
-    const db = await openHandleDB();
-    return new Promise((resolve, reject) => {
+  try { const db = await openHandleDB();
+    return new Promise((res, rej) => {
       const tx = db.transaction(HANDLE_STORE, 'readwrite');
       tx.objectStore(HANDLE_STORE).put(handle, key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
     });
   } catch (e) {}
 }
 async function loadHandleFromDB(key) {
-  try {
-    const db = await openHandleDB();
-    return new Promise((resolve, reject) => {
+  try { const db = await openHandleDB();
+    return new Promise((res, rej) => {
       const tx = db.transaction(HANDLE_STORE, 'readonly');
-      const req = tx.objectStore(HANDLE_STORE).get(key);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      const r = tx.objectStore(HANDLE_STORE).get(key);
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     });
   } catch (e) { return null; }
 }
 async function clearHandleFromDB(key) {
-  try {
-    const db = await openHandleDB();
-    return new Promise((resolve, reject) => {
+  try { const db = await openHandleDB();
+    return new Promise((res, rej) => {
       const tx = db.transaction(HANDLE_STORE, 'readwrite');
       tx.objectStore(HANDLE_STORE).delete(key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
     });
   } catch (e) {}
 }
 
-/* ============================================================
-   TIPI
-   ============================================================ */
-function normalizeType(t) {
-  if (!t) return null;
-  const s = String(t).trim();
-  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-}
+function normalizeType(t) { if (!t) return null; const s = String(t).trim(); return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(); }
 function canonicalType(t) {
   const n = normalizeType(t);
   switch (n) {
@@ -212,20 +170,11 @@ function canonicalType(t) {
     default: return n;
   }
 }
-
-/* ============================================================
-   ANCHOR / FORMAT
-   ============================================================ */
 function anchorTopFor(node, y, h) {
-  const def = DEFS[node.type];
-  if (!def) return y;
+  const def = DEFS[node.type]; if (!def) return y;
   switch (def.shape) {
-    case 'diamond':
-    case 'hex':
-    case 'parallelogram':
-      return y + h * 0.05;
-    default:
-      return y;
+    case 'diamond': case 'hex': case 'parallelogram': return y + h * 0.05;
+    default: return y;
   }
 }
 function formatForText(node) {
@@ -239,9 +188,6 @@ function formatForText(node) {
   return `${d.variable} = ${s} ${dir} ${e}${stepText}`;
 }
 
-/* ============================================================
-   MISURA TESTO
-   ============================================================ */
 const _mc = document.createElement('canvas').getContext('2d');
 function measureTextWidth(text, font) {
   if (!text) return 0;
@@ -252,20 +198,16 @@ function measureTextWidth(text, font) {
   return max;
 }
 function measureNode(node) {
-  const def = DEFS[node.type];
-  if (!def) return { w: MIN_NODE_W, h: 60 };
+  const def = DEFS[node.type]; if (!def) return { w: MIN_NODE_W, h: 60 };
   const labelW = measureTextWidth(def.label.toUpperCase(), 'bold 10px system-ui, sans-serif');
   let contentW = 0;
-  if (node.type === 'for') {
-    contentW = measureTextWidth(formatForText(node), '13px ui-monospace, monospace');
-  } else if (def.editable) {
-    contentW = measureTextWidth(node.text || def.ph || '', '13px ui-monospace, monospace');
-  }
+  if (node.type === 'for') contentW = measureTextWidth(formatForText(node), '13px ui-monospace, monospace');
+  else if (def.editable) contentW = measureTextWidth(node.text || def.ph || '', '13px ui-monospace, monospace');
   let padX = 46;
   switch (def.shape) {
     case 'parallelogram': padX = 100; break;
-    case 'diamond':       padX = 120; break;
-    case 'hex':           padX = 100; break;
+    case 'diamond': padX = 120; break;
+    case 'hex': padX = 100; break;
   }
   const extraH = node.declareType ? 16 : 0;
   let w = Math.min(MAX_NODE_W, Math.max(MIN_NODE_W, Math.max(labelW, contentW) + padX));
@@ -276,7 +218,12 @@ function measureNode(node) {
 }
 
 /* ============================================================
-   PARSER / VALUTATORE
+   VALUTATORE
+   Operatori logici supportati:
+     AND / and / And  →  &&
+     OR  / or  / Or   →  ||
+     NOT / not / Not  →  !
+   Anche &&, ||, ! direttamente.
    ============================================================ */
 function valueLiteral(name) {
   if (!(name in state.variables)) throw new Error('Variabile "' + name + '" non definita');
@@ -295,8 +242,7 @@ function evaluate(src) {
   const strings = [];
   code = code.replace(/"((?:[^"\\]|\\.)*)"/g, (m, s) => {
     const u = s.replace(/\\(.)/g, (_, c) => c === 'n' ? '\n' : c === 't' ? '\t' : c === 'r' ? '\r' : c === '"' ? '"' : c === '\\' ? '\\' : c);
-    strings.push(u);
-    return STR_PRE + (strings.length - 1) + STR_SUF;
+    strings.push(u); return STR_PRE + (strings.length - 1) + STR_SUF;
   });
   const BUILTINS = {
     abs:'Math.abs', min:'Math.min', max:'Math.max', sqrt:'Math.sqrt', pow:'Math.pow',
@@ -309,7 +255,8 @@ function evaluate(src) {
   };
   code = code.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (name) => {
     if (name === 'true' || name === 'false' || name === 'null' || name === 'undefined') return name;
-    if (name === 'AND' || name === 'OR' || name === 'NOT') return name;
+    /* Operatori logici: passa-through (case-insensitive) */
+    if (/^(and|or|not)$/i.test(name)) return name;
     if (name === 'To' || name === 'Step') return name;
     if (BUILTINS[name]) return BUILTINS[name];
     if (name in state.variables) {
@@ -322,40 +269,31 @@ function evaluate(src) {
     }
     throw new Error('Variabile "' + name + '" non definita');
   });
-  strings.forEach((s, i) => {
-    code = code.split(STR_PRE + i + STR_SUF).join(JSON.stringify(s));
-  });
-  code = code.replace(/\bAND\b/g, '&&').replace(/\bOR\b/g, '||').replace(/\bNOT\b/g, '!').replace(/<>/g, '!=');
-  try {
-    const fn = new Function('"use strict"; return (' + code + ');');
-    return fn();
-  } catch (e) {
-    throw new Error('Errore sintassi in "' + src + '": ' + e.message);
-  }
+  strings.forEach((s, i) => { code = code.split(STR_PRE + i + STR_SUF).join(JSON.stringify(s)); });
+  /* Traduzione operatori logici (case-insensitive) */
+  code = code
+    .replace(/\bAND\b/gi, '&&')
+    .replace(/\bOR\b/gi, '||')
+    .replace(/\bNOT\b/gi, '!')
+    .replace(/<>/g, '!=');
+  try { const fn = new Function('"use strict"; return (' + code + ');'); return fn(); }
+  catch (e) { throw new Error('Errore sintassi in "' + src + '": ' + e.message); }
 }
 function splitOnConcat(src) {
-  const parts = [];
-  let cur = '', inStr = false, sc = '', depth = 0;
+  const parts = []; let cur = '', inStr = false, sc = '', depth = 0;
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
-    if (inStr) {
-      cur += c;
-      if (c === '\\' && i + 1 < src.length) { cur += src[++i]; continue; }
-      if (c === sc) inStr = false;
-      continue;
-    }
+    if (inStr) { cur += c; if (c === '\\' && i + 1 < src.length) { cur += src[++i]; continue; } if (c === sc) inStr = false; continue; }
     if (c === '"' || c === "'") { inStr = true; sc = c; cur += c; continue; }
     if (c === '(' || c === '[') depth++;
     if (c === ')' || c === ']') depth--;
     if (depth === 0 && (c === '+' || c === '&')) {
       if (c === '&' && /[a-zA-Z_]/.test(src[i + 1] || '')) { cur += c; continue; }
-      parts.push(cur); cur = '';
-      continue;
+      parts.push(cur); cur = ''; continue;
     }
     cur += c;
   }
-  parts.push(cur);
-  return parts;
+  parts.push(cur); return parts;
 }
 function evaluateOutput(src) {
   if (!src || !src.trim()) return '';
@@ -364,8 +302,7 @@ function evaluateOutput(src) {
   const parts = splitOnConcat(src);
   if (parts.length > 1) {
     return parts.map(p => {
-      const t = p.trim();
-      if (!t) return '';
+      const t = p.trim(); if (!t) return '';
       const m = t.match(/^"((?:[^"\\]|\\.)*)"$/);
       if (m) return m[1].replace(/\\(.)/g, (_, c) => c === 'n' ? '\n' : c === 't' ? '\t' : c === 'r' ? '\r' : c);
       const v = evaluate(t);
@@ -379,19 +316,10 @@ function evaluateOutput(src) {
   return String(v);
 }
 
-/* ============================================================
-   SHAPE SVG
-   ============================================================ */
 function makeShapeEl(type) {
-  const def = DEFS[type];
-  if (!def) return null;
-  const SHAPES = {
-    diamond: '50,3 97,30 50,57 3,30',
-    hex: '16,3 84,3 97,30 84,57 16,57 3,30',
-    parallelogram: '18,3 97,3 82,57 3,57',
-  };
-  const pts = SHAPES[def.shape];
-  if (!pts) return null;
+  const def = DEFS[type]; if (!def) return null;
+  const SHAPES = { diamond: '50,3 97,30 50,57 3,30', hex: '16,3 84,3 97,30 84,57 16,57 3,30', parallelogram: '18,3 97,3 82,57 3,57' };
+  const pts = SHAPES[def.shape]; if (!pts) return null;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'node-shape');
   svg.setAttribute('viewBox', '0 0 100 60');
@@ -403,59 +331,38 @@ function makeShapeEl(type) {
   poly.setAttribute('stroke-width', '2');
   poly.setAttribute('stroke-linejoin', 'round');
   poly.setAttribute('vector-effect', 'non-scaling-stroke');
-  svg.appendChild(poly);
-  return svg;
+  svg.appendChild(poly); return svg;
 }
 
-/* ============================================================
-   CREAZIONE NODO
-   ============================================================ */
 function createNodeEl(node, idx) {
-  const def = DEFS[node.type];
-  if (!def) return document.createElement('div');
+  const def = DEFS[node.type]; if (!def) return document.createElement('div');
   const el = document.createElement('div');
   el.className = 'node';
-  el.dataset.id = node.id;
-  el.dataset.type = node.type;
-  el.dataset.index = idx;
+  el.dataset.id = node.id; el.dataset.type = node.type; el.dataset.index = idx;
 
-  const shape = makeShapeEl(node.type);
-  if (shape) el.appendChild(shape);
-
+  const shape = makeShapeEl(node.type); if (shape) el.appendChild(shape);
   if (def.shape === 'oval' || def.shape === 'rect' || def.shape === 'rect-dashed' ||
       def.shape === 'comment' || def.shape === 'marker') {
-    const box = document.createElement('div');
-    box.className = 'node-box';
-    el.appendChild(box);
+    const box = document.createElement('div'); box.className = 'node-box'; el.appendChild(box);
   }
-
-  const body = document.createElement('div');
-  body.className = 'node-body';
-
-  const label = document.createElement('span');
-  label.className = 'node-label';
-  label.textContent = def.label;
-  body.appendChild(label);
+  const body = document.createElement('div'); body.className = 'node-body';
+  const label = document.createElement('span'); label.className = 'node-label'; label.textContent = def.label; body.appendChild(label);
 
   if (node.type === 'declare' && node.declareType) {
     const sub = document.createElement('span');
-    sub.className = 'node-sublabel';
-    sub.textContent = node.declareType;
+    sub.className = 'node-sublabel'; sub.textContent = node.declareType;
     sub.title = 'Clicca per cambiare il tipo';
     sub.addEventListener('click', e => {
       e.stopPropagation();
       openTypePicker(node.declareType, (newType) => {
-        const n = state.nodes.find(x => x.id === node.id);
-        if (!n) return;
+        const n = state.nodes.find(x => x.id === node.id); if (!n) return;
         const oldName = (n.text || '').trim();
         n.declareType = newType;
         if (oldName && state.varDefs[oldName]) {
           state.varDefs[oldName].type = newType;
           if (state.variables[oldName]) state.variables[oldName].type = newType;
         }
-        renderVars();
-        render();
-        scheduleSave();
+        renderVars(); render(); scheduleSave();
         state.dirty = true; updateSaveIndicator();
         toast('Tipo cambiato in ' + newType);
       });
@@ -468,47 +375,30 @@ function createNodeEl(node, idx) {
     display.className = 'node-input for-display';
     display.textContent = formatForText(node);
     display.title = 'Clicca per configurare';
-    display.addEventListener('click', e => {
-      e.stopPropagation();
-      openForDialog(node);
-    });
+    display.addEventListener('click', e => { e.stopPropagation(); openForDialog(node); });
     display.addEventListener('mousedown', e => e.stopPropagation());
     display.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
     body.appendChild(display);
   } else if (def.editable) {
     const input = document.createElement('input');
-    input.className = 'node-input';
-    input.type = 'text';
-    input.value = node.text || '';
-    input.placeholder = def.ph || '';
-    input.spellcheck = false;
-    input.autocomplete = 'off';
+    input.className = 'node-input'; input.type = 'text';
+    input.value = node.text || ''; input.placeholder = def.ph || '';
+    input.spellcheck = false; input.autocomplete = 'off';
     input.addEventListener('input', () => {
-      const n = state.nodes.find(x => x.id === node.id);
-      if (!n) return;
+      const n = state.nodes.find(x => x.id === node.id); if (!n) return;
       const oldName = (n.text || '').trim();
       n.text = input.value;
       const newName = input.value.trim();
       if (n.type === 'declare' && n.declareType) {
         if (oldName && oldName !== newName) {
-          if (state.varDefs[oldName]) {
-            state.varDefs[newName] = state.varDefs[oldName];
-            delete state.varDefs[oldName];
-          }
-          if (state.variables[oldName]) {
-            state.variables[newName] = state.variables[oldName];
-            delete state.variables[oldName];
-          }
+          if (state.varDefs[oldName]) { state.varDefs[newName] = state.varDefs[oldName]; delete state.varDefs[oldName]; }
+          if (state.variables[oldName]) { state.variables[newName] = state.variables[oldName]; delete state.variables[oldName]; }
         }
-        if (newName) {
-          state.varDefs[newName] = { type: n.declareType, default: TYPE_DEFAULTS[n.declareType] };
-        }
+        if (newName) state.varDefs[newName] = { type: n.declareType, default: TYPE_DEFAULTS[n.declareType] };
         renderVars();
       }
-      requestAnimationFrame(layoutAll);
-      scheduleSave();
-      state.dirty = true;
-      updateSaveIndicator();
+      requestAnimationFrame(layoutAll); scheduleSave();
+      state.dirty = true; updateSaveIndicator();
     });
     input.addEventListener('mousedown', e => e.stopPropagation());
     input.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
@@ -519,9 +409,7 @@ function createNodeEl(node, idx) {
 
   if (def.deletable) {
     const del = document.createElement('button');
-    del.className = 'node-del';
-    del.innerHTML = svgClose();
-    del.title = 'Elimina';
+    del.className = 'node-del'; del.innerHTML = svgClose(); del.title = 'Elimina';
     del.addEventListener('click', e => { e.stopPropagation(); deleteNode(node.id); });
     el.appendChild(del);
   }
@@ -532,54 +420,35 @@ function createNodeEl(node, idx) {
     selectNode(node.id);
   });
 
-  /* ----- DRAG NODO (solo se draggable !== false) ----- */
   const isDraggable = def.draggable !== false;
   if (isDraggable) {
-    /* Mouse */
     let dragMouse = null;
     el.addEventListener('mousedown', e => {
       if (e.target.tagName === 'INPUT' || e.target.closest('.node-del') || e.target.classList.contains('connector')) return;
-      e.stopPropagation();
-      e.preventDefault();
-      dragMouse = {
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        startWorldX: node.x,
-        startWorldY: node.y,
-      };
+      e.stopPropagation(); e.preventDefault();
+      dragMouse = { startClientX: e.clientX, startClientY: e.clientY, startWorldX: node.x, startWorldY: node.y };
       el.style.zIndex = 100;
     });
     document.addEventListener('mousemove', e => {
       if (!dragMouse || !el.isConnected) return;
       const dx = (e.clientX - dragMouse.startClientX) / state.zoom;
       const dy = (e.clientY - dragMouse.startClientY) / state.zoom;
-      const x = dragMouse.startWorldX + dx;
-      const y = dragMouse.startWorldY + dy;
-      el.style.left = x + 'px';
-      el.style.top  = y + 'px';
+      const x = dragMouse.startWorldX + dx, y = dragMouse.startWorldY + dy;
+      el.style.left = x + 'px'; el.style.top = y + 'px';
       node.x = x; node.y = y;
       renderLinks(buildLayout());
     });
     document.addEventListener('mouseup', () => {
       if (!dragMouse) return;
-      dragMouse = null;
-      el.style.zIndex = '';
-      scheduleSave();
+      dragMouse = null; el.style.zIndex = ''; scheduleSave();
     });
-
-    /* Touch */
     let dragTouch = null;
     el.addEventListener('touchstart', e => {
       if (e.touches.length !== 1) return;
       if (e.target.tagName === 'INPUT' || e.target.closest('.node-del') || e.target.classList.contains('connector')) return;
       e.stopPropagation();
       const t = e.touches[0];
-      dragTouch = {
-        startClientX: t.clientX,
-        startClientY: t.clientY,
-        startWorldX: node.x,
-        startWorldY: node.y,
-      };
+      dragTouch = { startClientX: t.clientX, startClientY: t.clientY, startWorldX: node.x, startWorldY: node.y };
       el.style.zIndex = 100;
     }, { passive: true });
     el.addEventListener('touchmove', e => {
@@ -588,34 +457,24 @@ function createNodeEl(node, idx) {
       const t = e.touches[0];
       const dx = (t.clientX - dragTouch.startClientX) / state.zoom;
       const dy = (t.clientY - dragTouch.startClientY) / state.zoom;
-      const x = dragTouch.startWorldX + dx;
-      const y = dragTouch.startWorldY + dy;
-      el.style.left = x + 'px';
-      el.style.top  = y + 'px';
+      const x = dragTouch.startWorldX + dx, y = dragTouch.startWorldY + dy;
+      el.style.left = x + 'px'; el.style.top = y + 'px';
       node.x = x; node.y = y;
       renderLinks(buildLayout());
     }, { passive: false });
     el.addEventListener('touchend', () => {
       if (!dragTouch) return;
-      dragTouch = null;
-      el.style.zIndex = '';
-      scheduleSave();
+      dragTouch = null; el.style.zIndex = ''; scheduleSave();
     });
   }
 
   return el;
 }
 
-/* ============================================================
-   PARSER STRUTTURALE
-   ============================================================ */
 function parseBlock(nodes, start, end) {
-  const items = [];
-  let i = start;
+  const items = []; let i = start;
   while (i < end) {
-    const n = nodes[i];
-    if (!n) break;
-
+    const n = nodes[i]; if (!n) break;
     if (n.type === 'if') {
       let depth = 0, elseIdx = -1, endifIdx = end;
       for (let j = i + 1; j < end; j++) {
@@ -634,10 +493,8 @@ function parseBlock(nodes, start, end) {
         trueInsertAt: i + 1,
         falseInsertAt: elseIdx >= 0 ? elseIdx + 1 : endifIdx,
       });
-      i = endifIdx + 1;
-      continue;
+      i = endifIdx + 1; continue;
     }
-
     if (n.type === 'for' || n.type === 'while' || n.type === 'dowhile') {
       let depth = 0, endloopIdx = end;
       for (let j = i + 1; j < end; j++) {
@@ -650,34 +507,30 @@ function parseBlock(nodes, start, end) {
         body: parseBlock(nodes, i + 1, endloopIdx),
         endloopIndex: endloopIdx, bodyInsertAt: i + 1,
       });
-      i = endloopIdx + 1;
-      continue;
+      i = endloopIdx + 1; continue;
     }
-
     if (n.type === 'else' || n.type === 'endif' || n.type === 'endloop') { i++; continue; }
-    items.push({ kind: 'simple', node: n, flatIndex: i });
-    i++;
+    items.push({ kind: 'simple', node: n, flatIndex: i }); i++;
   }
   return items;
 }
 function firstNodeOf(items) { for (const it of items) if (it.node) return it.node; return null; }
 
 /* ============================================================
-   LAYOUT
+   LAYOUT — Reingold-Tilford con tratto orizzontale minimo
+   ------------------------------------------------------------
+   Ogni sottoalbero ha la sua larghezza (subWidth).
+   I rami Vero (dx) e Falso (sx) sono affiancati con HGAP.
+   Il tratto orizzontale dal vertice IF al centro del ramo è
+   garantito >= MIN_HORIZ_LEN.
    ============================================================ */
 function buildLayout() {
   const sizes = new Map();
   state.nodes.forEach(n => {
-    const s = measureNode(n);
-    sizes.set(n.id, s);
+    const s = measureNode(n); sizes.set(n.id, s);
     const el = nodesEl.querySelector('.node[data-id="' + n.id + '"]');
     if (el) { el.style.width = s.w + 'px'; el.style.minHeight = s.h + 'px'; }
   });
-
-  const viewportW = canvasEl.clientWidth || 900;
-  const minNeeded = 2 * BRANCH_OFFSET + 240;
-  const baseW = Math.max(viewportW, minNeeded);
-  const centerX = baseW / 2;
 
   const positions = new Map();
   const links = [];
@@ -685,74 +538,95 @@ function buildLayout() {
   const labels = [];
   const plusPts = [];
 
+  /* Larghezza totale richiesta da un blocco di items */
+  function subWidth(items) {
+    let w = MIN_NODE_W;
+    for (const it of items) {
+      if (it.kind === 'simple') {
+        w = Math.max(w, sizes.get(it.node.id).w);
+      } else if (it.kind === 'if') {
+        const tw = it.trueBranch.length ? subWidth(it.trueBranch) : MIN_BRANCH_W;
+        const fw = it.falseBranch.length ? subWidth(it.falseBranch) : MIN_BRANCH_W;
+        const minEdgeDist = MIN_HORIZ_LEN + MIN_NODE_W * 0.485;
+        const distF = Math.max(minEdgeDist, fw / 2 + HGAP / 2);
+        const distT = Math.max(minEdgeDist, tw / 2 + HGAP / 2);
+        w = Math.max(w, distF + distT);
+      } else if (it.kind === 'loop') {
+        const bw = it.body.length ? subWidth(it.body) : MIN_BRANCH_W;
+        const minEdgeDist = MIN_HORIZ_LEN + MIN_NODE_W * 0.485;
+        const distB = Math.max(minEdgeDist, bw / 2 + HGAP / 2);
+        w = Math.max(w, distB + HGAP);
+      }
+    }
+    return w;
+  }
+
+  const tree = parseBlock(state.nodes, 0, state.nodes.length);
+  const totalW = subWidth(tree);
+  const centerX = 40 + totalW / 2;
+
+  /* Layout ricorsivo */
   function layoutItems(items, cx, startY) {
     let y = startY;
     let lastId = null, lastCX = cx, lastBottomY = startY;
 
     for (const item of items) {
+
+      /* ---------- SEMPLICE ---------- */
       if (item.kind === 'simple') {
         const s = sizes.get(item.node.id);
-        const x = cx - s.w / 2;
-        positions.set(item.node.id, { x, y, w: s.w, h: s.h });
+        positions.set(item.node.id, { x: cx - s.w / 2, y, w: s.w, h: s.h });
         if (lastId) {
           links.push({
             from: { x: lastCX, y: lastBottomY, id: lastId },
             to:   { x: cx, y: anchorTopFor(item.node, y, s.h), id: item.node.id },
-            type: 'normal', corners: [],
-            insertAt: item.flatIndex,
+            type: 'normal', corners: [], insertAt: item.flatIndex,
           });
           plusPts.push({ x: cx, y: (lastBottomY + y) / 2, insertAt: item.flatIndex });
         }
-        lastId = item.node.id;
-        lastCX = cx;
-        lastBottomY = y + s.h;
+        lastId = item.node.id; lastCX = cx; lastBottomY = y + s.h;
         y += s.h + VGAP;
         continue;
       }
 
+      /* ---------- IF ---------- */
       if (item.kind === 'if') {
         const s = sizes.get(item.node.id);
         const ifX = cx - s.w / 2;
         positions.set(item.node.id, { x: ifX, y, w: s.w, h: s.h });
+
         if (lastId) {
           links.push({
             from: { x: lastCX, y: lastBottomY, id: lastId },
             to:   { x: cx, y: anchorTopFor(item.node, y, s.h), id: item.node.id },
-            type: 'normal', corners: [],
-            insertAt: item.flatIndex,
+            type: 'normal', corners: [], insertAt: item.flatIndex,
           });
           plusPts.push({ x: cx, y: (lastBottomY + y) / 2, insertAt: item.flatIndex });
         }
+
         const ifCY = y + s.h / 2;
         const ifBottom = y + s.h;
         const branchTopY = ifBottom + VGAP;
         const rightVX = ifX + s.w * 0.97;
         const leftVX  = ifX + s.w * 0.03;
-        const trueCX  = cx + BRANCH_OFFSET;
-        const falseCX = cx - BRANCH_OFFSET;
 
-        let trueEnd = { bottomY: branchTopY, lastId: null, lastCX: trueCX, lastBottomY: branchTopY };
-        if (item.trueBranch.length > 0) {
-          const first = firstNodeOf(item.trueBranch);
-          if (first) {
-            const firstSize = sizes.get(first.id) || { w: MIN_NODE_W, h: 56 };
-            links.push({
-              from: { x: rightVX, y: ifCY, id: item.node.id },
-              to:   { x: trueCX, y: anchorTopFor(first, branchTopY, firstSize.h), id: first.id },
-              type: 'true',
-              corners: [{ x: trueCX, y: ifCY }],
-              insertAt: item.trueInsertAt,
-            });
-            plusPts.push({ x: trueCX, y: (ifCY + branchTopY) / 2, insertAt: item.trueInsertAt });
-          }
-          trueEnd = layoutItems(item.trueBranch, trueCX, branchTopY);
-        }
+        const tW = item.trueBranch.length ? subWidth(item.trueBranch) : MIN_BRANCH_W;
+        const fW = item.falseBranch.length ? subWidth(item.falseBranch) : MIN_BRANCH_W;
+        /* Tratto orizzontale minimo garantito dal vertice IF */
+        const horizOffset = s.w * 0.485;
+        const minEdgeDistT = MIN_HORIZ_LEN + horizOffset;
+        const minEdgeDistF = MIN_HORIZ_LEN + horizOffset;
+        const distT = Math.max(minEdgeDistT, tW / 2 + HGAP / 2);
+        const distF = Math.max(minEdgeDistF, fW / 2 + HGAP / 2);
+        const trueCX  = cx + distT;
+        const falseCX = cx - distF;
 
-        let falseEnd = { bottomY: branchTopY, lastId: null, lastCX: falseCX, lastBottomY: branchTopY };
+        /* --- FALSE (sinistra) --- */
+        let falseBottomY, falseLastId, falseLastBottomY;
         if (item.falseBranch.length > 0) {
           const first = firstNodeOf(item.falseBranch);
           if (first) {
-            const firstSize = sizes.get(first.id) || { w: MIN_NODE_W, h: 56 };
+            const firstSize = sizes.get(first.id);
             links.push({
               from: { x: leftVX, y: ifCY, id: item.node.id },
               to:   { x: falseCX, y: anchorTopFor(first, branchTopY, firstSize.h), id: first.id },
@@ -762,36 +636,50 @@ function buildLayout() {
             });
             plusPts.push({ x: falseCX, y: (ifCY + branchTopY) / 2, insertAt: item.falseInsertAt });
           }
-          falseEnd = layoutItems(item.falseBranch, falseCX, branchTopY);
+          const fEnd = layoutItems(item.falseBranch, falseCX, branchTopY);
+          falseBottomY = fEnd.bottomY;
+          falseLastId = fEnd.lastId;
+          falseLastBottomY = fEnd.lastBottomY;
+        } else {
+          falseBottomY = branchTopY + EMPTY_BRANCH_H;
+          falseLastId = null;
+          falseLastBottomY = falseBottomY;
         }
 
-        const mergeY = Math.max(trueEnd.bottomY, falseEnd.bottomY, branchTopY) + 20;
+        /* --- TRUE (destra) --- */
+        let trueBottomY, trueLastId, trueLastBottomY;
+        if (item.trueBranch.length > 0) {
+          const first = firstNodeOf(item.trueBranch);
+          if (first) {
+            const firstSize = sizes.get(first.id);
+            links.push({
+              from: { x: rightVX, y: ifCY, id: item.node.id },
+              to:   { x: trueCX, y: anchorTopFor(first, branchTopY, firstSize.h), id: first.id },
+              type: 'true',
+              corners: [{ x: trueCX, y: ifCY }],
+              insertAt: item.trueInsertAt,
+            });
+            plusPts.push({ x: trueCX, y: (ifCY + branchTopY) / 2, insertAt: item.trueInsertAt });
+          }
+          const tEnd = layoutItems(item.trueBranch, trueCX, branchTopY);
+          trueBottomY = tEnd.bottomY;
+          trueLastId = tEnd.lastId;
+          trueLastBottomY = tEnd.lastBottomY;
+        } else {
+          trueBottomY = branchTopY + EMPTY_BRANCH_H;
+          trueLastId = null;
+          trueLastBottomY = trueBottomY;
+        }
+
+        /* --- MERGE --- */
+        const mergeY = Math.max(trueBottomY, falseBottomY, branchTopY) + MERGE_GAP;
         const mergeId = 'merge_' + item.node.id;
         merges.push({ id: mergeId, x: cx, y: mergeY });
 
-        if (trueEnd.lastId) {
+        /* FALSE → merge */
+        if (falseLastId) {
           links.push({
-            from: { x: trueCX, y: trueEnd.lastBottomY, id: trueEnd.lastId },
-            to:   { x: cx, y: mergeY, id: mergeId, isMerge: true },
-            type: 'true',
-            corners: [{ x: trueCX, y: mergeY }],
-            insertAt: item.endifIndex,
-          });
-        } else {
-          links.push({
-            from: { x: rightVX, y: ifCY, id: item.node.id },
-            to:   { x: cx, y: mergeY, id: mergeId, isMerge: true },
-            type: 'true',
-            corners: [{ x: trueCX, y: ifCY }, { x: trueCX, y: mergeY }],
-            insertAt: item.trueInsertAt,
-            insertMode: null,
-          });
-          plusPts.push({ x: trueCX, y: (ifCY + mergeY) / 2, insertAt: item.trueInsertAt, insertMode: null });
-        }
-
-        if (falseEnd.lastId) {
-          links.push({
-            from: { x: falseCX, y: falseEnd.lastBottomY, id: falseEnd.lastId },
+            from: { x: falseCX, y: falseLastBottomY, id: falseLastId },
             to:   { x: cx, y: mergeY, id: mergeId, isMerge: true },
             type: 'false',
             corners: [{ x: falseCX, y: mergeY }],
@@ -804,44 +692,72 @@ function buildLayout() {
             to:   { x: cx, y: mergeY, id: mergeId, isMerge: true },
             type: 'false',
             corners: [{ x: falseCX, y: ifCY }, { x: falseCX, y: mergeY }],
-            insertAt: item.falseInsertAt,
-            insertMode: falseMode,
+            insertAt: item.falseInsertAt, insertMode: falseMode,
           });
           plusPts.push({ x: falseCX, y: (ifCY + mergeY) / 2, insertAt: item.falseInsertAt, insertMode: falseMode });
         }
 
-        labels.push({ x: rightVX + 38, y: ifCY - 16, text: 'Vero',  type: 'true'  });
-        labels.push({ x: leftVX - 38,  y: ifCY - 16, text: 'Falso', type: 'false' });
+        /* TRUE → merge */
+        if (trueLastId) {
+          links.push({
+            from: { x: trueCX, y: trueLastBottomY, id: trueLastId },
+            to:   { x: cx, y: mergeY, id: mergeId, isMerge: true },
+            type: 'true',
+            corners: [{ x: trueCX, y: mergeY }],
+            insertAt: item.endifIndex,
+          });
+        } else {
+          links.push({
+            from: { x: rightVX, y: ifCY, id: item.node.id },
+            to:   { x: cx, y: mergeY, id: mergeId, isMerge: true },
+            type: 'true',
+            corners: [{ x: trueCX, y: ifCY }, { x: trueCX, y: mergeY }],
+            insertAt: item.trueInsertAt,
+          });
+          plusPts.push({ x: trueCX, y: (ifCY + mergeY) / 2, insertAt: item.trueInsertAt });
+        }
+
+        /* Etichette Vero/Falso a metà tratto orizzontale */
+        labels.push({ x: (leftVX + falseCX) / 2, y: ifCY - 10, text: 'Falso', type: 'false' });
+        labels.push({ x: (rightVX + trueCX) / 2, y: ifCY - 10, text: 'Vero',  type: 'true'  });
+
         lastId = mergeId; lastCX = cx; lastBottomY = mergeY + 10;
-        y = mergeY + VGAP + 20;
+        y = mergeY + VGAP;
         continue;
       }
 
+      /* ---------- LOOP ---------- */
       if (item.kind === 'loop') {
         const s = sizes.get(item.node.id);
         const lX = cx - s.w / 2;
         positions.set(item.node.id, { x: lX, y, w: s.w, h: s.h });
+
         if (lastId) {
           links.push({
             from: { x: lastCX, y: lastBottomY, id: lastId },
             to:   { x: cx, y: anchorTopFor(item.node, y, s.h), id: item.node.id },
-            type: 'normal', corners: [],
-            insertAt: item.flatIndex,
+            type: 'normal', corners: [], insertAt: item.flatIndex,
           });
           plusPts.push({ x: cx, y: (lastBottomY + y) / 2, insertAt: item.flatIndex });
         }
+
         const loopCY = y + s.h / 2;
         const loopBottom = y + s.h;
         const bodyTopY = loopBottom + VGAP;
-        const bodyCX = cx + BRANCH_OFFSET;
         const rightVX = lX + s.w * 0.97;
         const leftVX = lX + s.w * 0.03;
 
-        let bodyEnd = { bottomY: bodyTopY, lastId: null, lastCX: bodyCX, lastBottomY: bodyTopY };
+        const bW = item.body.length ? subWidth(item.body) : MIN_BRANCH_W;
+        const horizOffset = s.w * 0.485;
+        const minEdgeDist = MIN_HORIZ_LEN + horizOffset;
+        const distB = Math.max(minEdgeDist, bW / 2 + HGAP / 2);
+        const bodyCX = cx + distB;
+
+        let bodyEnd;
         if (item.body.length > 0) {
           const first = firstNodeOf(item.body);
           if (first) {
-            const firstSize = sizes.get(first.id) || { w: MIN_NODE_W, h: 56 };
+            const firstSize = sizes.get(first.id);
             links.push({
               from: { x: rightVX, y: loopCY, id: item.node.id },
               to:   { x: bodyCX, y: anchorTopFor(first, bodyTopY, firstSize.h), id: first.id },
@@ -852,9 +768,11 @@ function buildLayout() {
             plusPts.push({ x: bodyCX, y: (loopCY + bodyTopY) / 2, insertAt: item.bodyInsertAt });
           }
           bodyEnd = layoutItems(item.body, bodyCX, bodyTopY);
+        } else {
+          bodyEnd = { bottomY: bodyTopY + EMPTY_BRANCH_H, lastId: null, lastBottomY: bodyTopY + EMPTY_BRANCH_H };
         }
 
-        const mergeY = Math.max(bodyEnd.bottomY, bodyTopY) + 20;
+        const mergeY = Math.max(bodyEnd.bottomY, bodyTopY) + MERGE_GAP;
         const mergeId = 'merge_' + item.node.id;
         merges.push({ id: mergeId, x: cx, y: mergeY });
 
@@ -874,10 +792,9 @@ function buildLayout() {
             corners: [{ x: bodyCX, y: loopCY }, { x: bodyCX, y: mergeY }],
             insertAt: item.bodyInsertAt,
           });
-          plusPts.push({ x: bodyCX, y: (loopCY + mergeY) / 2, insertAt: item.bodyInsertAt });
         }
 
-        const leftBackX = cx - BRANCH_OFFSET;
+        const leftBackX = cx - 30;
         links.push({
           from: { x: cx, y: mergeY, id: mergeId, isMerge: true },
           to:   { x: leftVX, y: loopCY, id: item.node.id },
@@ -885,38 +802,45 @@ function buildLayout() {
           corners: [{ x: leftBackX, y: mergeY }, { x: leftBackX, y: loopCY }],
         });
 
-        labels.push({ x: rightVX + 38, y: loopCY - 16, text: 'Vero', type: 'loop' });
-        labels.push({ x: leftBackX - 30, y: (mergeY + loopCY) / 2, text: 'Loop', type: 'loop' });
+        labels.push({ x: (rightVX + bodyCX) / 2, y: loopCY - 10, text: 'Vero', type: 'loop' });
+        labels.push({ x: leftBackX - 22, y: (mergeY + loopCY) / 2, text: 'Loop', type: 'loop' });
+
         lastId = mergeId; lastCX = cx; lastBottomY = mergeY + 10;
-        y = mergeY + VGAP + 20;
+        y = mergeY + VGAP;
         continue;
       }
     }
     return { bottomY: lastBottomY, lastId, lastCX, lastBottomY };
   }
 
-  const tree = parseBlock(state.nodes, 0, state.nodes.length);
   layoutItems(tree, centerX, 40);
 
+  /* Bounding box */
   let minX = Infinity, maxX = -Infinity, maxY = 0;
   positions.forEach(p => {
-    minX = Math.min(minX, p.x);
-    maxX = Math.max(maxX, p.x + p.w);
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x + p.w);
     maxY = Math.max(maxY, p.y + p.h);
   });
   merges.forEach(m => {
-    minX = Math.min(minX, m.x - 20);
-    maxX = Math.max(maxX, m.x + 20);
+    minX = Math.min(minX, m.x - 20); maxX = Math.max(maxX, m.x + 20);
     maxY = Math.max(maxY, m.y + 20);
   });
   labels.forEach(lb => {
-    minX = Math.min(minX, lb.x - 40);
-    maxX = Math.max(maxX, lb.x + 40);
+    minX = Math.min(minX, lb.x - 40); maxX = Math.max(maxX, lb.x + 40);
+  });
+  links.forEach(l => {
+    if (l.from) { minX = Math.min(minX, l.from.x); maxX = Math.max(maxX, l.from.x); }
+    if (l.to)   { minX = Math.min(minX, l.to.x);   maxX = Math.max(maxX, l.to.x); }
+    if (l.corners) l.corners.forEach(c => {
+      minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x);
+      maxY = Math.max(maxY, c.y);
+    });
+  });
+  plusPts.forEach(p => {
+    minX = Math.min(minX, p.x - 20); maxX = Math.max(maxX, p.x + 20);
   });
 
-  const totalW = maxX - minX;
-  const targetLeft = Math.max(20, (viewportW - totalW) / 2);
-  const shiftX = targetLeft - minX;
+  const shiftX = 40 - minX;
   if (shiftX !== 0) {
     positions.forEach(p => p.x += shiftX);
     merges.forEach(m => m.x += shiftX);
@@ -934,19 +858,13 @@ function buildLayout() {
   return { positions, links, merges, labels, plusPts, minX, maxX, maxY, centerX: (minX + maxX) / 2 };
 }
 
-/* ============================================================
-   RENDER LINKS
-   ============================================================ */
+/* RENDER LINKS */
 function renderLinks(layout) {
-  linksEl.innerHTML = '';
-  overlayEl.innerHTML = '';
-  const W = state.natW || 800;
-  const H = state.natH || 600;
-  linksEl.setAttribute('width', W);
-  linksEl.setAttribute('height', H);
+  linksEl.innerHTML = ''; overlayEl.innerHTML = '';
+  const W = state.natW || 800, H = state.natH || 600;
+  linksEl.setAttribute('width', W); linksEl.setAttribute('height', H);
   linksEl.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-  overlayEl.style.width = W + 'px';
-  overlayEl.style.height = H + 'px';
+  overlayEl.style.width = W + 'px'; overlayEl.style.height = H + 'px';
 
   layout.links.forEach(link => {
     const { from, to, type, corners } = link;
@@ -954,13 +872,10 @@ function renderLinks(layout) {
     let d = 'M ' + from.x + ' ' + from.y;
     if (corners && corners.length) for (const c of corners) d += ' L ' + c.x + ' ' + c.y;
     d += ' L ' + to.x + ' ' + to.y;
-
     const cls = 'link ' + (type === 'true' ? 'true' : type === 'false' ? 'false' : type === 'loop' ? 'loop' : 'normal');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('class', cls);
-    path.dataset.fromId = from.id || '';
-    path.dataset.toId = to.id || '';
+    path.setAttribute('d', d); path.setAttribute('class', cls);
+    path.dataset.fromId = from.id || ''; path.dataset.toId = to.id || '';
     if (typeof link.insertAt === 'number' && link.insertAt >= 0) {
       path.dataset.clickable = '1';
       path.dataset.insertAt = link.insertAt;
@@ -981,9 +896,8 @@ function renderLinks(layout) {
     const len = Math.hypot(dx, dy) || 1;
     const ux = dx / len, uy = dy / len;
     const px = -uy, py = ux;
-    const aLen = 10, aW = 5;
+    const aLen = 9, aW = 4.5;
     const bx = to.x - ux * aLen, by = to.y - uy * aLen;
-
     const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     arrow.setAttribute('points', to.x + ',' + to.y + ' ' + (bx + px * aW) + ',' + (by + py * aW) + ' ' + (bx - px * aW) + ',' + (by - py * aW));
     let aCls = 'link-arrow';
@@ -997,29 +911,23 @@ function renderLinks(layout) {
 
   layout.merges.forEach(m => {
     const c = document.createElement('div');
-    c.className = 'merge-circle';
-    c.dataset.id = m.id;
-    c.style.left = m.x + 'px';
-    c.style.top = m.y + 'px';
+    c.className = 'merge-circle'; c.dataset.id = m.id;
+    c.style.left = m.x + 'px'; c.style.top = m.y + 'px';
     overlayEl.appendChild(c);
   });
   layout.labels.forEach(l => {
     const el = document.createElement('div');
     el.className = 'branch-label ' + l.type;
     el.textContent = l.text;
-    el.style.left = l.x + 'px';
-    el.style.top = l.y + 'px';
+    el.style.left = l.x + 'px'; el.style.top = l.y + 'px';
     overlayEl.appendChild(el);
   });
   layout.plusPts.forEach(p => {
     const wrap = document.createElement('div');
     wrap.className = 'plus-area';
-    wrap.style.left = p.x + 'px';
-    wrap.style.top = p.y + 'px';
+    wrap.style.left = p.x + 'px'; wrap.style.top = p.y + 'px';
     const btn = document.createElement('button');
-    btn.className = 'plus';
-    btn.innerHTML = svgPlus();
-    btn.title = 'Aggiungi blocco qui';
+    btn.className = 'plus'; btn.innerHTML = svgPlus(); btn.title = 'Aggiungi blocco qui';
     btn.addEventListener('click', e => {
       e.stopPropagation();
       requestInsert(p.insertAt, p.insertMode || null);
@@ -1029,43 +937,25 @@ function renderLinks(layout) {
   });
 }
 
-/* ============================================================
-   LAYOUT ALL
-   ============================================================ */
+/* LAYOUT ALL */
 function layoutAll() {
   const layout = buildLayout();
-
   layout.positions.forEach((p, id) => {
     const el = nodesEl.querySelector('.node[data-id="' + id + '"]');
     if (el) {
-      el.style.left = p.x + 'px';
-      el.style.top = p.y + 'px';
-      el.style.width = p.w + 'px';
-      el.style.minHeight = p.h + 'px';
+      el.style.left = p.x + 'px'; el.style.top = p.y + 'px';
+      el.style.width = p.w + 'px'; el.style.minHeight = p.h + 'px';
     }
   });
-
   state.natW = Math.max(layout.maxX + 100, 200);
   state.natH = Math.max(layout.maxY + 100, 200);
-
-  /* Salva il bounding box reale (world coords) per la centratura */
-  state.contentMinX = layout.minX;
-  state.contentMaxX = layout.maxX;
-  state.contentMinY = 0;
-  state.contentMaxY = layout.maxY;
-
+  state.contentMinX = layout.minX; state.contentMaxX = layout.maxX;
+  state.contentMinY = 0; state.contentMaxY = layout.maxY;
   canvasContentEl.style.width  = state.natW + 'px';
   canvasContentEl.style.height = state.natH + 'px';
-
   renderLinks(layout);
-
-  if (!state.hasCentered) {
-    centerDiagram();
-    state.hasCentered = true;
-  } else {
-    clampPan();
-    applyTransform();
-  }
+  if (!state.hasCentered) { fitToView(); state.hasCentered = true; }
+  else { clampPan(); applyTransform(); }
 }
 
 function render() {
@@ -1079,53 +969,25 @@ function render() {
   requestAnimationFrame(() => { layoutAll(); setTimeout(layoutAll, 80); });
 }
 
-/* ============================================================
-   PAN & ZOOM
-   ============================================================ */
+/* PAN & ZOOM */
 function applyTransform() {
   canvasContentEl.style.transform =
     'translate(' + state.panX + 'px, ' + state.panY + 'px) scale(' + state.zoom + ')';
   $('ctZoom').textContent = Math.round(state.zoom * 100) + '%';
 }
-
-/* ------------------------------------------------------------
-   clampPan — range ampio quando il contenuto è piccolo,
-   navigazione libera quando è grande.
-   ------------------------------------------------------------ */
 function clampPan() {
-  const wrapW = canvasEl.clientWidth;
-  const wrapH = canvasEl.clientHeight;
-  const visW = state.natW * state.zoom;
-  const visH = state.natH * state.zoom;
+  const wrapW = canvasEl.clientWidth, wrapH = canvasEl.clientHeight;
+  const visW = state.natW * state.zoom, visH = state.natH * state.zoom;
   const m = PAN_MARGIN;
-
-  /* X */
   let minX, maxX;
-  if (visW <= wrapW) {
-    minX = -m;
-    maxX = wrapW - visW + m;
-  } else {
-    minX = wrapW - visW - m;
-    maxX = m;
-  }
+  if (visW <= wrapW) { minX = -m; maxX = wrapW - visW + m; }
+  else { minX = wrapW - visW - m; maxX = m; }
   state.panX = Math.max(minX, Math.min(maxX, state.panX));
-
-  /* Y */
   let minY, maxY;
-  if (visH <= wrapH) {
-    minY = -m;
-    maxY = wrapH - visH + m;
-  } else {
-    minY = wrapH - visH - m;
-    maxY = m;
-  }
+  if (visH <= wrapH) { minY = -m; maxY = wrapH - visH + m; }
+  else { minY = wrapH - visH - m; maxY = m; }
   state.panY = Math.max(minY, Math.min(maxY, state.panY));
 }
-
-/* ------------------------------------------------------------
-   centerDiagram — usa il bounding box reale del contenuto
-   (non natW). Centra orizzontalmente, ancora in alto in Y.
-   ------------------------------------------------------------ */
 function centerDiagram() {
   const wrapW = canvasEl.clientWidth;
   const cx = (state.contentMinX + state.contentMaxX) / 2;
@@ -1133,123 +995,70 @@ function centerDiagram() {
   state.panY = TOP_ANCHOR_Y;
   applyTransform();
 }
-
-/* ------------------------------------------------------------
-   fitToView — adatta zoom e pan per mostrare tutto il diagramma
-   ------------------------------------------------------------ */
 function fitToView() {
-  const wrapW = canvasEl.clientWidth;
-  const wrapH = canvasEl.clientHeight;
+  const wrapW = canvasEl.clientWidth, wrapH = canvasEl.clientHeight;
   const contentW = Math.max(1, state.contentMaxX - state.contentMinX);
   const contentH = Math.max(1, state.contentMaxY - state.contentMinY);
-
-  const padX = 60;
-  const padY = TOP_ANCHOR_Y + 40;
+  const padX = 40, padY = TOP_ANCHOR_Y + 20;
   const zx = (wrapW - padX) / contentW;
   const zy = (wrapH - padY) / contentH;
   const newZoom = Math.max(MIN_ZOOM, Math.min(1, Math.min(zx, zy)));
-
   state.zoom = newZoom;
   const cx = (state.contentMinX + state.contentMaxX) / 2;
   state.panX = wrapW / 2 - cx * newZoom;
   state.panY = TOP_ANCHOR_Y;
-  clampPan();
-  applyTransform();
+  clampPan(); applyTransform();
 }
-
-/* ------------------------------------------------------------
-   zoomTo — mantiene stabile il punto sotto l'anchor
-   ------------------------------------------------------------ */
 function zoomTo(newZ, anchorX, anchorY) {
   const oldZ = state.zoom;
   const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZ));
   if (Math.abs(z - oldZ) < 0.001) return;
-
   const wx = (anchorX - state.panX) / oldZ;
   const wy = (anchorY - state.panY) / oldZ;
-
   state.zoom = z;
   state.panX = anchorX - wx * z;
   state.panY = anchorY - wy * z;
-
-  clampPan();
-  applyTransform();
+  clampPan(); applyTransform();
 }
-
 function zoomToCenter(newZ) {
-  const cx = canvasEl.clientWidth / 2;
-  const cy = canvasEl.clientHeight / 2;
-  zoomTo(newZ, cx, cy);
+  zoomTo(newZ, canvasEl.clientWidth / 2, canvasEl.clientHeight / 2);
 }
 
-/* ============================================================
-   PAN — Mouse (tasto centrale o sinistro sul vuoto)
-   ============================================================ */
 let mousePanState = null;
-
 canvasEl.addEventListener('mousedown', (e) => {
   const isMiddle = e.button === 1;
   const isEmpty = !e.target.closest('.node, .plus, .connector, .node-del, .node-sublabel, .for-display');
   const isLeft = e.button === 0;
-
   if (!isMiddle && !(isLeft && isEmpty)) return;
-
   e.preventDefault();
-  mousePanState = {
-    startClientX: e.clientX,
-    startClientY: e.clientY,
-    startPanX: state.panX,
-    startPanY: state.panY,
-  };
+  mousePanState = { startClientX: e.clientX, startClientY: e.clientY, startPanX: state.panX, startPanY: state.panY };
   canvasEl.classList.add('panning');
 });
-
 document.addEventListener('mousemove', (e) => {
   if (!mousePanState) return;
-  const dx = e.clientX - mousePanState.startClientX;
-  const dy = e.clientY - mousePanState.startClientY;
-  state.panX = mousePanState.startPanX + dx;
-  state.panY = mousePanState.startPanY + dy;
-  clampPan();
-  applyTransform();
+  state.panX = mousePanState.startPanX + (e.clientX - mousePanState.startClientX);
+  state.panY = mousePanState.startPanY + (e.clientY - mousePanState.startClientY);
+  clampPan(); applyTransform();
 });
-
 document.addEventListener('mouseup', () => {
   if (!mousePanState) return;
-  mousePanState = null;
-  canvasEl.classList.remove('panning');
+  mousePanState = null; canvasEl.classList.remove('panning');
 });
+canvasEl.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
 
-canvasEl.addEventListener('auxclick', (e) => {
-  if (e.button === 1) e.preventDefault();
-});
-
-/* ============================================================
-   ZOOM — Rotellina del mouse (desktop), pinch (mobile)
-   ============================================================ */
 function handleWheelZoom(e) {
-  e.preventDefault();
-  e.stopPropagation();
-
+  e.preventDefault(); e.stopPropagation();
   const rect = canvasEl.getBoundingClientRect();
-  const ax = e.clientX - rect.left;
-  const ay = e.clientY - rect.top;
-
+  const ax = e.clientX - rect.left, ay = e.clientY - rect.top;
   let delta = e.deltaY;
-  if (e.deltaMode === 1) delta *= 16;
-  else if (e.deltaMode === 2) delta *= 100;
-
+  if (e.deltaMode === 1) delta *= 16; else if (e.deltaMode === 2) delta *= 100;
   const factor = Math.exp(-delta * 0.0015);
   zoomTo(state.zoom * factor, ax, ay);
 }
 canvasEl.addEventListener('wheel', handleWheelZoom, { passive: false });
 canvasWrap.addEventListener('wheel', handleWheelZoom, { passive: false });
 
-/* ============================================================
-   PAN & PINCH — Touch
-   ============================================================ */
 let touchState = null;
-
 canvasEl.addEventListener('touchstart', (e) => {
   if (e.touches.length === 2) {
     const t1 = e.touches[0], t2 = e.touches[1];
@@ -1259,97 +1068,61 @@ canvasEl.addEventListener('touchstart', (e) => {
       startZoom: state.zoom,
       startMidX: (t1.clientX + t2.clientX) / 2,
       startMidY: (t1.clientY + t2.clientY) / 2,
-      startPanX: state.panX,
-      startPanY: state.panY,
+      startPanX: state.panX, startPanY: state.panY,
     };
-    canvasEl.classList.add('pinching');
-    canvasEl.classList.remove('panning');
-    e.preventDefault();
-    return;
+    canvasEl.classList.add('pinching'); canvasEl.classList.remove('panning');
+    e.preventDefault(); return;
   }
-
   if (e.touches.length === 1) {
     const isEmpty = !e.target.closest('.node, .plus, .connector, .node-del, .node-sublabel, .for-display');
     if (!isEmpty) return;
-
     const t = e.touches[0];
-    touchState = {
-      mode: 'pan',
-      startClientX: t.clientX,
-      startClientY: t.clientY,
-      startPanX: state.panX,
-      startPanY: state.panY,
-    };
+    touchState = { mode: 'pan', startClientX: t.clientX, startClientY: t.clientY, startPanX: state.panX, startPanY: state.panY };
     canvasEl.classList.add('panning');
   }
 }, { passive: false });
-
 canvasEl.addEventListener('touchmove', (e) => {
   if (!touchState) return;
-
   if (touchState.mode === 'pinch' && e.touches.length >= 2) {
     e.preventDefault();
     const t1 = e.touches[0], t2 = e.touches[1];
     const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
     const midX = (t1.clientX + t2.clientX) / 2 - canvasEl.getBoundingClientRect().left;
     const midY = (t1.clientY + t2.clientY) / 2 - canvasEl.getBoundingClientRect().top;
-
     const ratio = dist / touchState.startDist;
     const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, touchState.startZoom * ratio));
-
     const wx = (touchState.startMidX - touchState.startPanX) / touchState.startZoom;
     const wy = (touchState.startMidY - touchState.startPanY) / touchState.startZoom;
-
     state.zoom = newZoom;
-    state.panX = midX - wx * newZoom;
-    state.panY = midY - wy * newZoom;
-
-    clampPan();
-    applyTransform();
+    state.panX = midX - wx * newZoom; state.panY = midY - wy * newZoom;
+    clampPan(); applyTransform();
     return;
   }
-
   if (touchState.mode === 'pan' && e.touches.length === 1) {
     e.preventDefault();
     const t = e.touches[0];
-    const dx = t.clientX - touchState.startClientX;
-    const dy = t.clientY - touchState.startClientY;
-    state.panX = touchState.startPanX + dx;
-    state.panY = touchState.startPanY + dy;
-    clampPan();
-    applyTransform();
+    state.panX = touchState.startPanX + (t.clientX - touchState.startClientX);
+    state.panY = touchState.startPanY + (t.clientY - touchState.startClientY);
+    clampPan(); applyTransform();
   }
 }, { passive: false });
-
 function endTouch(e) {
   if (!touchState) return;
   const remaining = e.touches.length;
-
   if (touchState.mode === 'pinch' && remaining === 1) {
     const t = e.touches[0];
-    touchState = {
-      mode: 'pan',
-      startClientX: t.clientX,
-      startClientY: t.clientY,
-      startPanX: state.panX,
-      startPanY: state.panY,
-    };
-    canvasEl.classList.remove('pinching');
-    canvasEl.classList.add('panning');
+    touchState = { mode: 'pan', startClientX: t.clientX, startClientY: t.clientY, startPanX: state.panX, startPanY: state.panY };
+    canvasEl.classList.remove('pinching'); canvasEl.classList.add('panning');
     return;
   }
-
   if (remaining === 0) {
-    touchState = null;
-    canvasEl.classList.remove('panning', 'pinching');
+    touchState = null; canvasEl.classList.remove('panning', 'pinching');
   }
 }
 canvasEl.addEventListener('touchend', endTouch);
 canvasEl.addEventListener('touchcancel', endTouch);
 
-/* ============================================================
-   POPUP TIPO
-   ============================================================ */
+/* POPUP TIPO */
 function openTypePicker(currentType, onConfirm) {
   typeModal.hidden = false;
   typeModal.querySelectorAll('.type-btn').forEach(b => {
@@ -1357,27 +1130,15 @@ function openTypePicker(currentType, onConfirm) {
     b.style.background  = (b.dataset.type === currentType) ? 'var(--bg-soft)' : '';
   });
   const handler = (e) => {
-    const btn = e.target.closest('.type-btn');
-    if (!btn) return;
-    const chosen = btn.dataset.type;
-    close();
-    onConfirm(chosen);
+    const btn = e.target.closest('.type-btn'); if (!btn) return;
+    const chosen = btn.dataset.type; close(); onConfirm(chosen);
   };
-  const close = () => {
-    typeModal.hidden = true;
-    typeModal.removeEventListener('click', handler);
-  };
-  typeModal.addEventListener('click', handler);
-  typeModal._close = close;
+  const close = () => { typeModal.hidden = true; typeModal.removeEventListener('click', handler); };
+  typeModal.addEventListener('click', handler); typeModal._close = close;
 }
-function closeTypePicker() {
-  if (typeModal._close) typeModal._close();
-  else typeModal.hidden = true;
-}
+function closeTypePicker() { if (typeModal._close) typeModal._close(); else typeModal.hidden = true; }
 
-/* ============================================================
-   POPUP FOR
-   ============================================================ */
+/* POPUP FOR */
 function openForDialog(node) {
   state.editingForId = node.id;
   const d = node.forData || {};
@@ -1386,16 +1147,11 @@ function openForDialog(node) {
   $('forEnd').value = d.end !== undefined && d.end !== '' ? d.end : '10';
   $('forStep').value = d.step !== undefined && d.step !== '' ? d.step : '1';
   const dir = d.direction || 'inc';
-  forModal.querySelectorAll('input[name="forDirection"]').forEach(r => {
-    r.checked = (r.value === dir);
-  });
+  forModal.querySelectorAll('input[name="forDirection"]').forEach(r => { r.checked = (r.value === dir); });
   forModal.hidden = false;
   setTimeout(() => $('forVar').focus(), 80);
 }
-function closeForDialog() {
-  forModal.hidden = true;
-  state.editingForId = null;
-}
+function closeForDialog() { forModal.hidden = true; state.editingForId = null; }
 function confirmForDialog() {
   const id = state.editingForId;
   if (!id) { closeForDialog(); return; }
@@ -1411,50 +1167,34 @@ function confirmForDialog() {
     variable: variable,
     start: $('forStart').value.trim() || '0',
     end: $('forEnd').value.trim() || '10',
-    direction: direction,
-    step: step,
+    direction: direction, step: step,
   };
   state.varDefs[variable] = state.varDefs[variable] || { type: 'Integer', default: 0 };
-  renderVars();
-  render();
-  pushHistory();
-  scheduleSave();
+  renderVars(); render(); pushHistory(); scheduleSave();
   state.dirty = true; updateSaveIndicator();
-  closeForDialog();
-  toast('For configurato');
+  closeForDialog(); toast('For configurato');
 }
-
 function requestInsert(atIndex, mode) {
-  state.insertAt = atIndex;
-  state.insertMode = mode || null;
-  pickerEl.hidden = false;
+  state.insertAt = atIndex; state.insertMode = mode || null; pickerEl.hidden = false;
 }
 
-/* ============================================================
-   GESTIONE NODI
-   ============================================================ */
+/* GESTIONE NODI */
 function addNode(type, atIndex, opts) {
   opts = opts || {};
-  const def = DEFS[type];
-  if (!def) { toast('Tipo sconosciuto'); return; }
+  const def = DEFS[type]; if (!def) { toast('Tipo sconosciuto'); return; }
   if (atIndex === undefined || atIndex === null || atIndex < 0) atIndex = state.nodes.length - 1;
   atIndex = Math.max(1, Math.min(state.nodes.length - 1, atIndex));
-
   if (opts.mode === 'false-no-else') {
     state.nodes.splice(atIndex, 0, { id: uid(), type: 'else', text: '' });
     atIndex = atIndex + 1;
   }
-
   const node = { id: uid(), type, text: '' };
   if (opts.declareType) node.declareType = opts.declareType;
   if (type === 'for') node.forData = { variable: '', start: '0', end: '10', direction: 'inc', step: '1' };
   state.nodes.splice(atIndex, 0, node);
-
-  if (type === 'if') {
-    state.nodes.splice(atIndex + 1, 0, { id: uid(), type: 'endif', text: '' });
-  } else if (type === 'for' || type === 'while' || type === 'dowhile') {
-    state.nodes.splice(atIndex + 1, 0, { id: uid(), type: 'endloop', text: '' });
-  } else if (type === 'else') {
+  if (type === 'if') state.nodes.splice(atIndex + 1, 0, { id: uid(), type: 'endif', text: '' });
+  else if (type === 'for' || type === 'while' || type === 'dowhile') state.nodes.splice(atIndex + 1, 0, { id: uid(), type: 'endloop', text: '' });
+  else if (type === 'else') {
     let hasEndif = false;
     for (let j = atIndex + 1; j < state.nodes.length; j++) {
       if (state.nodes[j].type === 'endif') { hasEndif = true; break; }
@@ -1462,21 +1202,14 @@ function addNode(type, atIndex, opts) {
     }
     if (!hasEndif) state.nodes.splice(atIndex + 1, 0, { id: uid(), type: 'endif', text: '' });
   }
-
-  pushHistory();
-  render();
-  scheduleSave();
+  pushHistory(); render(); scheduleSave();
   toast(def.label + ' aggiunto');
-
   if (type === 'for') setTimeout(() => openForDialog(node), 200);
 }
-
 function deleteNode(id) {
-  const i = state.nodes.findIndex(n => n.id === id);
-  if (i === -1) return;
+  const i = state.nodes.findIndex(n => n.id === id); if (i === -1) return;
   const n = state.nodes[i];
   if (!DEFS[n.type].deletable) { toast('Blocco non eliminabile'); return; }
-
   if (n.type === 'if') {
     let depth = 0;
     for (let j = i + 1; j < state.nodes.length; j++) {
@@ -1493,28 +1226,18 @@ function deleteNode(id) {
       if (t === 'endloop') { if (depth === 0) { state.nodes.splice(j, 1); break; } depth--; }
     }
   }
-
   if (n.type === 'declare') {
     const vn = (n.text || '').trim();
-    if (vn) {
-      delete state.varDefs[vn];
-      delete state.variables[vn];
-      renderVars();
-    }
+    if (vn) { delete state.varDefs[vn]; delete state.variables[vn]; renderVars(); }
   }
-
   const idxNow = state.nodes.findIndex(x => x.id === id);
   if (idxNow !== -1) state.nodes.splice(idxNow, 1);
-  pushHistory();
-  render();
-  scheduleSave();
+  pushHistory(); render(); scheduleSave();
 }
-
 function selectNode(id) {
   state.selectedId = id;
   nodesEl.querySelectorAll('.node').forEach(el => el.classList.toggle('selected', el.dataset.id === id));
 }
-
 function ensureStartEnd() {
   const start = state.nodes.find(n => n.type === 'start');
   const end = state.nodes.find(n => n.type === 'end');
@@ -1524,9 +1247,7 @@ function ensureStartEnd() {
   state.nodes = [s].concat(mid).concat([e]);
 }
 
-/* ============================================================
-   VARIABILI
-   ============================================================ */
+/* VARIABILI */
 function setVar(name, value, type) {
   const t = type || (state.varDefs[name] && state.varDefs[name].type) || inferType(value);
   state.variables[name] = { value, type: t };
@@ -1567,68 +1288,54 @@ function renderVars() {
   varListEl.querySelectorAll('.vd').forEach(b => {
     b.addEventListener('click', function() {
       const n = b.dataset.del;
-      delete state.variables[n];
-      delete state.varDefs[n];
-      renderVars();
-      scheduleSave();
+      delete state.variables[n]; delete state.varDefs[n];
+      renderVars(); scheduleSave();
       state.dirty = true; updateSaveIndicator();
     });
   });
 }
 
-/* ============================================================
-   INPUT UTENTE (console)
-   ============================================================ */
+/* INPUT UTENTE */
 function requestInput(prompt) {
   return new Promise(resolve => {
     clog(prompt, 'in');
     const row = document.createElement('div');
     row.style.cssText = 'padding:4px 0;display:flex;gap:6px;align-items:center;';
     const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.placeholder = 'Risposta...';
+    inp.type = 'text'; inp.placeholder = 'Risposta...';
     inp.style.cssText = 'flex:1;min-width:0;padding:6px 8px;border:1px solid #2563eb;border-radius:4px;font-family:inherit;font-size:14px;outline:none;box-sizing:border-box;';
     const ok = document.createElement('button');
     ok.textContent = '↵';
     ok.style.cssText = 'padding:6px 14px;background:#2563eb;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700;min-height:36px;';
     row.appendChild(inp); row.appendChild(ok);
-    consoleEl.appendChild(row);
-    consoleEl.scrollTop = consoleEl.scrollHeight;
+    consoleEl.appendChild(row); consoleEl.scrollTop = consoleEl.scrollHeight;
     setTimeout(() => inp.focus(), 50);
     const finish = () => {
       const raw = inp.value;
       const num = Number(raw);
       const v = (raw.trim() !== '' && !isNaN(num)) ? num : raw;
-      clog('> ' + raw, 'out');
-      row.remove();
-      resolve(v);
+      clog('> ' + raw, 'out'); row.remove(); resolve(v);
     };
     ok.addEventListener('click', finish);
     inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); finish(); } });
   });
 }
 
-/* ============================================================
-   HIGHLIGHT
-   ============================================================ */
+/* HIGHLIGHT */
 function highlight(id, cls) {
   cls = cls || 'running';
   nodesEl.querySelectorAll('.node').forEach(el => el.classList.remove('running', 'error'));
   linksEl.querySelectorAll('.link').forEach(p => p.classList.remove('active'));
   overlayEl.querySelectorAll('.merge-circle').forEach(c => c.classList.remove('active'));
   if (!id) return;
-
   if (id.indexOf('merge_') === 0) {
     const mc = overlayEl.querySelector('.merge-circle[data-id="' + id + '"]');
-    if (mc) mc.classList.add('active');
-    return;
+    if (mc) mc.classList.add('active'); return;
   }
-
   const el = nodesEl.querySelector('.node[data-id="' + id + '"]');
   if (el) {
     el.classList.add(cls);
-    const wrapW = canvasEl.clientWidth;
-    const wrapH = canvasEl.clientHeight;
+    const wrapW = canvasEl.clientWidth, wrapH = canvasEl.clientHeight;
     const nodeWorldX = parseFloat(el.style.left) + el.offsetWidth / 2;
     const nodeWorldY = parseFloat(el.style.top)  + el.offsetHeight / 2;
     const nodeScreenX = state.panX + nodeWorldX * state.zoom;
@@ -1636,16 +1343,13 @@ function highlight(id, cls) {
     if (nodeScreenX < 60 || nodeScreenX > wrapW - 60 || nodeScreenY < 60 || nodeScreenY > wrapH - 60) {
       state.panX = wrapW / 2 - nodeWorldX * state.zoom;
       state.panY = wrapH / 2 - nodeWorldY * state.zoom;
-      clampPan();
-      applyTransform();
+      clampPan(); applyTransform();
     }
     linksEl.querySelectorAll('.link[data-to-id="' + id + '"]').forEach(l => l.classList.add('active'));
   }
 }
 
-/* ============================================================
-   COERCIZIONE
-   ============================================================ */
+/* COERCIZIONE */
 function coerceValue(v, type) {
   if (type === 'Integer') {
     if (typeof v === 'number') return Math.trunc(v);
@@ -1669,25 +1373,17 @@ function coerceValue(v, type) {
     if (typeof v === 'string') return /^(true|1|sì|si|yes)$/i.test(v);
     return Boolean(v);
   }
-  if (type === 'Character') {
-    const s = String(v);
-    return s.length > 0 ? s[0] : '\0';
-  }
+  if (type === 'Character') { const s = String(v); return s.length > 0 ? s[0] : '\0'; }
   return v;
 }
 
-/* ============================================================
-   ESECUZIONE
-   ============================================================ */
+/* ESECUZIONE */
 async function execSimple(node) {
   const text = (node.text || '').trim();
   switch (node.type) {
     case 'start': clog('START', 'info'); return 'ok';
     case 'end': clog('END', 'info'); return 'stop';
-    case 'comment':
-      if (text) clog(text.startsWith('//') ? text : '// ' + text, 'step');
-      return 'ok';
-
+    case 'comment': if (text) clog(text.startsWith('//') ? text : '// ' + text, 'step'); return 'ok';
     case 'input': {
       const m = text.match(/^&?([a-zA-Z_]\w*)(?:\[(.+?)\])?$/);
       if (!m) throw new Error('Input: usa "Input nome" (' + text + ')');
@@ -1700,60 +1396,40 @@ async function execSimple(node) {
         const i = Number(evaluate(idxExpr));
         if (!Number.isInteger(i) || i < 0 || i >= arr.value.length) throw new Error('Indice array fuori range');
         const baseType = arr.type.replace(/\[\]$/, '');
-        arr.value[i] = coerceValue(raw, baseType);
-        renderVars();
+        arr.value[i] = coerceValue(raw, baseType); renderVars();
       } else {
         const t = state.varDefs[name] && state.varDefs[name].type;
-        const v = coerceValue(raw, t);
-        setVar(name, v, t);
+        const v = coerceValue(raw, t); setVar(name, v, t);
       }
       return 'ok';
     }
-
-    case 'output': {
-      clog(evaluateOutput(text), 'out');
-      return 'ok';
-    }
-
+    case 'output': clog(evaluateOutput(text), 'out'); return 'ok';
     case 'declare': {
       if (node.declareType && text && /^[a-zA-Z_]\w*$/.test(text)) {
-        const type = node.declareType;
-        const name = text;
+        const type = node.declareType, name = text;
         const v = TYPE_DEFAULTS[type];
         state.varDefs[name] = { type, default: v };
         state.variables[name] = { value: v, type };
-        renderVars();
-        clog(type + ' ' + name, 'step');
-        return 'ok';
+        renderVars(); clog(type + ' ' + name, 'step'); return 'ok';
       }
       const arrM = text.match(/^([a-zA-Z]+)\s+([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*$/);
       if (arrM && VALID_TYPE_RE.test(arrM[1])) {
         const type = canonicalType(arrM[1]);
-        const name = arrM[2];
-        const size = parseInt(arrM[3], 10);
+        const name = arrM[2], size = parseInt(arrM[3], 10);
         const arr = new Array(size).fill(TYPE_DEFAULTS[type]);
         state.varDefs[name] = { type: type + '[]', default: arr.slice() };
         state.variables[name] = { value: arr, type: type + '[]' };
-        renderVars();
-        clog(type + ' ' + name + '[' + size + ']', 'step');
-        return 'ok';
+        renderVars(); clog(type + ' ' + name + '[' + size + ']', 'step'); return 'ok';
       }
       const m = text.match(/^([a-zA-Z]+)\s+&?([a-zA-Z_]\w*)(?:\s*=\s*(.+))?$/);
-      if (!m || !VALID_TYPE_RE.test(m[1])) {
-        throw new Error('Dichiara: usa "Integer x = 5" oppure seleziona il tipo dal popup');
-      }
-      const type = canonicalType(m[1]);
-      const name = m[2];
-      const expr = m[3];
+      if (!m || !VALID_TYPE_RE.test(m[1])) throw new Error('Dichiara: usa "Integer x = 5" oppure seleziona il tipo dal popup');
+      const type = canonicalType(m[1]), name = m[2], expr = m[3];
       let v = expr !== undefined ? evaluate(expr) : TYPE_DEFAULTS[type];
       v = coerceValue(v, type);
       state.varDefs[name] = { type, default: v };
       state.variables[name] = { value: v, type };
-      renderVars();
-      clog(type + ' ' + name + ' = ' + JSON.stringify(v), 'step');
-      return 'ok';
+      renderVars(); clog(type + ' ' + name + ' = ' + JSON.stringify(v), 'step'); return 'ok';
     }
-
     case 'assign': {
       if (!text) return 'ok';
       const inc = text.match(/^&?([a-zA-Z_]\w*)\s*(\+\+|--)$/);
@@ -1762,9 +1438,7 @@ async function execSimple(node) {
         if (!(name in state.variables)) throw new Error('Variabile "' + name + '" non definita');
         const cur = state.variables[name].value;
         const nv = op === '++' ? cur + 1 : cur - 1;
-        setVar(name, nv);
-        clog(name + ' ' + op + ' → ' + nv, 'step');
-        return 'ok';
+        setVar(name, nv); clog(name + ' ' + op + ' → ' + nv, 'step'); return 'ok';
       }
       const arrM = text.match(/^&?([a-zA-Z_]\w*)\s*\[(.+?)\]\s*=\s*(.+)$/);
       if (arrM) {
@@ -1775,10 +1449,8 @@ async function execSimple(node) {
         if (!Number.isInteger(i) || i < 0 || i >= arr.value.length) throw new Error('Indice array fuori range');
         const v = evaluate(expr);
         const baseType = arr.type.replace(/\[\]$/, '');
-        arr.value[i] = coerceValue(v, baseType);
-        renderVars();
-        clog(name + '[' + i + '] = ' + JSON.stringify(arr.value[i]), 'step');
-        return 'ok';
+        arr.value[i] = coerceValue(v, baseType); renderVars();
+        clog(name + '[' + i + '] = ' + JSON.stringify(arr.value[i]), 'step'); return 'ok';
       }
       const m = text.match(/^&?([a-zA-Z_]\w*)\s*=\s*(.+)$/);
       if (!m) throw new Error('Assegna: usa "x = 5"');
@@ -1786,10 +1458,8 @@ async function execSimple(node) {
       const v = evaluate(expr);
       const t = state.varDefs[name] && state.varDefs[name].type;
       setVar(name, v, t);
-      clog(name + ' = ' + JSON.stringify(state.variables[name]?.value ?? v), 'step');
-      return 'ok';
+      clog(name + ' = ' + JSON.stringify(state.variables[name]?.value ?? v), 'step'); return 'ok';
     }
-
     case 'break': clog('Break', 'warn'); return 'break';
     default: return 'ok';
   }
@@ -1799,7 +1469,6 @@ async function executeBlock(items, ctx) {
   for (let i = 0; i < items.length; i++) {
     if (!state.running) return 'stop';
     if (state.paused) { await sleep(80); i--; continue; }
-
     const item = items[i];
     state.totalSteps++;
     statusSteps.textContent = state.totalSteps + ' step';
@@ -1812,14 +1481,12 @@ async function executeBlock(items, ctx) {
       await sleep(SPEEDS[state.speed] || 350);
       continue;
     }
-
     if (item.kind === 'if') {
       highlight(item.node.id);
       const condText = (item.node.text || '').trim();
       const cond = condText ? Boolean(evaluate(condText)) : false;
       clog('If (' + condText + ') → ' + (cond ? 'Vero' : 'Falso'), 'info');
       await sleep(SPEEDS[state.speed] || 350);
-
       const branch = cond ? item.trueBranch : item.falseBranch;
       if (branch.length > 0) {
         const res = await executeBlock(branch, ctx);
@@ -1829,31 +1496,25 @@ async function executeBlock(items, ctx) {
       await sleep(SPEEDS[state.speed] / 2 || 200);
       continue;
     }
-
     if (item.kind === 'loop') {
       const loopNode = item.node;
-
       if (loopNode.type === 'for') {
         let name, start, end, step;
         const fd = loopNode.forData;
         if (fd && fd.variable) {
           name = fd.variable;
-          start = Number(evaluate(fd.start));
-          end = Number(evaluate(fd.end));
+          start = Number(evaluate(fd.start)); end = Number(evaluate(fd.end));
           const stepAbs = Math.abs(Number(fd.step) || 1);
           step = fd.direction === 'dec' ? -stepAbs : stepAbs;
         } else {
           const m = (loopNode.text || '').match(/^&?([a-zA-Z_]\w*)\s*=\s*(.+?)\s+To\s+(.+?)(?:\s+Step\s+(.+))?$/i);
           if (!m) throw new Error('For non configurato (clicca il blocco per configurarlo)');
-          name = m[1];
-          start = Number(evaluate(m[2]));
-          end = Number(evaluate(m[3]));
+          name = m[1]; start = Number(evaluate(m[2])); end = Number(evaluate(m[3]));
           step = m[4] !== undefined ? Number(evaluate(m[4])) : (start <= end ? 1 : -1);
         }
         state.varDefs[name] = state.varDefs[name] || { type: 'Integer', default: 0 };
         state.variables[name] = { value: start, type: 'Integer' };
         renderVars();
-
         let iter = 0;
         while (state.running) {
           if (++iter > 10000) throw new Error('Loop infinito (For)');
@@ -1863,20 +1524,17 @@ async function executeBlock(items, ctx) {
           clog('For ' + name + ' = ' + cur + ' → ' + end + ' [' + (step > 0 ? '+' : '') + step + '] ' + (cont ? 'Vero' : 'Falso'), 'info');
           await sleep(SPEEDS[state.speed] || 350);
           if (!cont) break;
-
           if (item.body.length > 0) {
             const res = await executeBlock(item.body, ctx);
             if (res === 'stop') return 'stop';
             if (res === 'break') break;
           }
-          state.variables[name].value += step;
-          renderVars();
+          state.variables[name].value += step; renderVars();
           highlight('merge_' + loopNode.id);
           await sleep(SPEEDS[state.speed] / 3 || 150);
         }
         continue;
       }
-
       if (loopNode.type === 'while') {
         let iter = 0;
         while (state.running) {
@@ -1886,7 +1544,6 @@ async function executeBlock(items, ctx) {
           clog('While (' + loopNode.text + ') → ' + (cond ? 'Vero' : 'Falso'), 'info');
           await sleep(SPEEDS[state.speed] || 350);
           if (!cond) break;
-
           if (item.body.length > 0) {
             const res = await executeBlock(item.body, ctx);
             if (res === 'stop') return 'stop';
@@ -1897,7 +1554,6 @@ async function executeBlock(items, ctx) {
         }
         continue;
       }
-
       if (loopNode.type === 'dowhile') {
         let iter = 0;
         while (state.running) {
@@ -1926,15 +1582,9 @@ async function runAll() {
   if (state.running) return;
   const start = state.nodes.find(n => n.type === 'start');
   if (!start) { toast('Nessun blocco Start'); return; }
-
-  state.running = true;
-  state.paused = false;
-  state.totalSteps = 0;
-  toggleRunUI(true);
-  cclear();
-  resetVars();
+  state.running = true; state.paused = false; state.totalSteps = 0;
+  toggleRunUI(true); cclear(); resetVars();
   clog('Avvio esecuzione', 'info');
-
   try {
     const tree = parseBlock(state.nodes, 0, state.nodes.length);
     await executeBlock(tree, {});
@@ -1943,10 +1593,8 @@ async function runAll() {
     clog('ERRORE: ' + err.message, 'err');
     toast('Errore: ' + err.message, 3500);
   } finally {
-    state.running = false;
-    state.paused = false;
-    toggleRunUI(false);
-    highlight(null);
+    state.running = false; state.paused = false;
+    toggleRunUI(false); highlight(null);
     statusText.textContent = 'Terminato';
     statusSteps.textContent = state.totalSteps + ' step';
   }
@@ -1954,36 +1602,25 @@ async function runAll() {
 
 async function stepOnce() {
   if (!state.running) {
-    state.running = true;
-    state.paused = true;
-    state.currentIndex = -1;
-    state.totalSteps = 0;
-    toggleRunUI(true);
-    cclear();
-    resetVars();
+    state.running = true; state.paused = true;
+    state.currentIndex = -1; state.totalSteps = 0;
+    toggleRunUI(true); cclear(); resetVars();
     clog('Passo-passo', 'info');
   }
-
   const next = state.currentIndex + 1;
   if (next >= state.nodes.length) {
     clog('Fine', 'info');
-    state.running = false;
-    toggleRunUI(false);
-    return;
+    state.running = false; toggleRunUI(false); return;
   }
-
   const node = state.nodes[next];
   state.currentIndex = next;
   highlight(node.id);
-
   try {
     const res = await execSimple(node);
     state.totalSteps++;
     statusSteps.textContent = state.totalSteps + ' step';
     if (res === 'stop') {
-      state.running = false;
-      toggleRunUI(false);
-      highlight(null);
+      state.running = false; toggleRunUI(false); highlight(null);
     }
   } catch (err) {
     clog('ERRORE: ' + err.message, 'err');
@@ -1993,13 +1630,10 @@ async function stepOnce() {
 }
 
 function stopRun() {
-  state.running = false;
-  state.paused = false;
+  state.running = false; state.paused = false;
   clog('Interrotto', 'warn');
-  toggleRunUI(false);
-  highlight(null);
+  toggleRunUI(false); highlight(null);
 }
-
 function toggleRunUI(running) {
   $('btnRun').disabled = running;
   $('btnStep').disabled = running;
@@ -2009,58 +1643,43 @@ function toggleRunUI(running) {
   const mt = $('mtabStop'); if (mt) mt.disabled = !running;
 }
 
-/* ============================================================
-   HISTORY
-   ============================================================ */
+/* HISTORY */
 function snapshot() { return clone({ nodes: state.nodes, varDefs: state.varDefs }); }
 function pushHistory() {
   state.history = state.history.slice(0, state.histIdx + 1);
   state.history.push(snapshot());
   state.histIdx = state.history.length - 1;
   if (state.history.length > 60) { state.history.shift(); state.histIdx--; }
-  state.dirty = true;
-  updateSaveIndicator();
+  state.dirty = true; updateSaveIndicator();
 }
 function undo() {
   if (state.histIdx <= 0) { toast('Niente da annullare'); return; }
   state.histIdx--;
   const s = state.history[state.histIdx];
-  state.nodes = clone(s.nodes);
-  state.varDefs = clone(s.varDefs);
-  ensureStartEnd();
-  render(); resetVars();
-  state.dirty = true; updateSaveIndicator();
-  toast('Annullato');
+  state.nodes = clone(s.nodes); state.varDefs = clone(s.varDefs);
+  ensureStartEnd(); render(); resetVars();
+  state.dirty = true; updateSaveIndicator(); toast('Annullato');
 }
 function redo() {
   if (state.histIdx >= state.history.length - 1) { toast('Niente da ripetere'); return; }
   state.histIdx++;
   const s = state.history[state.histIdx];
-  state.nodes = clone(s.nodes);
-  state.varDefs = clone(s.varDefs);
-  ensureStartEnd();
-  render(); resetVars();
-  state.dirty = true; updateSaveIndicator();
-  toast('Ripetuto');
+  state.nodes = clone(s.nodes); state.varDefs = clone(s.varDefs);
+  ensureStartEnd(); render(); resetVars();
+  state.dirty = true; updateSaveIndicator(); toast('Ripetuto');
 }
 
-/* ============================================================
-   SALVA / CARICA
-   ============================================================ */
+/* SALVA / CARICA */
 let saveTimer = null;
 function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveAuto, 500); }
-function getProjectData() {
-  return { app: APP.name, format: 'flowlab', version: APP.version, savedAt: new Date().toISOString(), nodes: state.nodes, varDefs: state.varDefs };
-}
+function getProjectData() { return { app: APP.name, format: 'flowlab', version: APP.version, savedAt: new Date().toISOString(), nodes: state.nodes, varDefs: state.varDefs }; }
 function saveAuto() { try { localStorage.setItem(APP.storageKey, JSON.stringify(getProjectData())); } catch (e) {} }
 function loadAuto() {
   try {
-    const raw = localStorage.getItem(APP.storageKey);
-    if (!raw) return false;
+    const raw = localStorage.getItem(APP.storageKey); if (!raw) return false;
     const data = JSON.parse(raw);
     if (!Array.isArray(data.nodes)) return false;
-    state.nodes = data.nodes;
-    state.varDefs = data.varDefs || {};
+    state.nodes = data.nodes; state.varDefs = data.varDefs || {};
     ensureStartEnd();
     state.variables = {};
     for (const name in state.varDefs) {
@@ -2073,44 +1692,33 @@ function loadAuto() {
     return true;
   } catch (e) { return false; }
 }
-
 async function saveToFile() {
   const text = JSON.stringify(getProjectData(), null, 2);
   const fileName = state.currentFileName || 'programma.fl';
-
   if (state.fileHandle) {
     try {
       const perm = await state.fileHandle.queryPermission({ mode: 'readwrite' });
       if (perm === 'granted' || (await state.fileHandle.requestPermission({ mode: 'readwrite' })) === 'granted') {
         const w = await state.fileHandle.createWritable();
-        await w.write(text);
-        await w.close();
+        await w.write(text); await w.close();
         state.currentFileName = state.fileHandle.name;
-        markSaved();
-        toast('Salvato: ' + state.fileHandle.name);
-        return;
+        markSaved(); toast('Salvato: ' + state.fileHandle.name); return;
       }
-    } catch (e) { console.warn('Save with memory handle failed:', e); }
+    } catch (e) {}
     state.fileHandle = null;
   }
-
   const stored = await loadHandleFromDB(FILE_HANDLE_KEY);
   if (stored) {
     try {
       const perm = await stored.queryPermission({ mode: 'readwrite' });
       if (perm === 'granted' || (await stored.requestPermission({ mode: 'readwrite' })) === 'granted') {
         const w = await stored.createWritable();
-        await w.write(text);
-        await w.close();
-        state.fileHandle = stored;
-        state.currentFileName = stored.name;
-        markSaved();
-        toast('Salvato: ' + stored.name);
-        return;
+        await w.write(text); await w.close();
+        state.fileHandle = stored; state.currentFileName = stored.name;
+        markSaved(); toast('Salvato: ' + stored.name); return;
       }
-    } catch (e) { console.warn('Save with DB handle failed:', e); }
+    } catch (e) {}
   }
-
   if (window.showSaveFilePicker) {
     try {
       const handle = await window.showSaveFilePicker({
@@ -2118,26 +1726,19 @@ async function saveToFile() {
         types: [{ description: 'FlowLab', accept: { 'application/json': ['.fl'] } }],
       });
       const w = await handle.createWritable();
-      await w.write(text);
-      await w.close();
-      state.fileHandle = handle;
-      state.currentFileName = handle.name || fileName;
+      await w.write(text); await w.close();
+      state.fileHandle = handle; state.currentFileName = handle.name || fileName;
       await saveHandleToDB(FILE_HANDLE_KEY, handle);
-      markSaved();
-      toast('Salvato: ' + state.currentFileName);
-      return;
+      markSaved(); toast('Salvato: ' + state.currentFileName); return;
     } catch (err) { if (err.name === 'AbortError') return; }
   }
-
   const blob = new Blob([text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = fileName; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 500);
-  markSaved();
-  toast('Progetto scaricato come ' + fileName);
+  markSaved(); toast('Progetto scaricato come ' + fileName);
 }
-
 async function loadFromFile() {
   if (window.showOpenFilePicker) {
     try {
@@ -2148,50 +1749,37 @@ async function loadFromFile() {
       const handle = arr[0];
       const f = await handle.getFile();
       parseProject(await f.text(), f.name);
-      state.fileHandle = handle;
-      state.currentFileName = f.name;
-      await saveHandleToDB(FILE_HANDLE_KEY, handle);
-      return;
+      state.fileHandle = handle; state.currentFileName = f.name;
+      await saveHandleToDB(FILE_HANDLE_KEY, handle); return;
     } catch (err) { if (err.name === 'AbortError') return; }
   }
   $('fileInput').click();
 }
-
 function parseProject(text, filename) {
   try {
     const data = JSON.parse(text);
     if (!Array.isArray(data.nodes)) throw new Error('Formato non valido');
-    state.nodes = data.nodes;
-    state.varDefs = data.varDefs || {};
+    state.nodes = data.nodes; state.varDefs = data.varDefs || {};
     ensureStartEnd();
     render(); resetVars(); pushHistory(); saveAuto();
-    markSaved();
-    toast('Caricato' + (filename ? ': ' + filename : ''));
+    markSaved(); toast('Caricato' + (filename ? ': ' + filename : ''));
   } catch (e) { toast('Errore: ' + e.message, 3500); }
 }
-
 function doNewProject() {
   state.nodes = [
     { id: uid(), type: 'start', text: '' },
     { id: uid(), type: 'end', text: '' },
   ];
-  state.varDefs = {};
-  state.variables = {};
-  state.history = [];
-  state.histIdx = -1;
+  state.varDefs = {}; state.variables = {};
+  state.history = []; state.histIdx = -1;
   state.currentFileName = 'programma.fl';
   state.fileHandle = null;
   clearHandleFromDB(FILE_HANDLE_KEY);
-  state.dirty = false;
-  state.hasCentered = false;
-  render();
-  renderVars();
-  state.history = [snapshot()];
-  state.histIdx = 0;
-  saveAuto();
-  updateSaveIndicator();
-  statusText.textContent = 'Pronto';
-  statusSteps.textContent = '0 step';
+  state.dirty = false; state.hasCentered = false;
+  render(); renderVars();
+  state.history = [snapshot()]; state.histIdx = 0;
+  saveAuto(); updateSaveIndicator();
+  statusText.textContent = 'Pronto'; statusSteps.textContent = '0 step';
   toast('Nuovo progetto creato');
 }
 async function newProject() {
@@ -2205,9 +1793,7 @@ async function newProject() {
   doNewProject();
 }
 
-/* ============================================================
-   EXPORT PNG
-   ============================================================ */
+/* EXPORT PNG */
 function exportPNG() {
   const layout = buildLayout();
   if (state.nodes.length === 0) { toast('Niente da esportare'); return; }
@@ -2220,7 +1806,6 @@ function exportPNG() {
   const ctx = cvs.getContext('2d');
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
   ctx.save(); ctx.scale(SCALE, SCALE); ctx.translate(-minX, -minY);
-
   layout.links.forEach(link => {
     const { from, to, type, corners } = link;
     if (!from || !to) return;
@@ -2231,8 +1816,7 @@ function exportPNG() {
     ctx.strokeStyle = stroke; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(from.x, from.y);
     if (corners) for (const c of corners) ctx.lineTo(c.x, c.y);
-    ctx.lineTo(to.x, to.y);
-    ctx.stroke();
+    ctx.lineTo(to.x, to.y); ctx.stroke();
     let lastPt = from;
     if (corners && corners.length) lastPt = corners[corners.length - 1];
     let dx = to.x - lastPt.x, dy = to.y - lastPt.y;
@@ -2240,7 +1824,7 @@ function exportPNG() {
     const len = Math.hypot(dx, dy) || 1;
     const ux = dx / len, uy = dy / len;
     const px = -uy, py = ux;
-    const aLen = 10, aW = 5;
+    const aLen = 9, aW = 4.5;
     const bx = to.x - ux * aLen, by = to.y - uy * aLen;
     ctx.fillStyle = stroke;
     ctx.beginPath();
@@ -2249,16 +1833,13 @@ function exportPNG() {
     ctx.lineTo(bx - px * aW, by - py * aW);
     ctx.closePath(); ctx.fill();
   });
-
   layout.merges.forEach(m => {
     ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, Math.PI * 2);
     ctx.fillStyle = '#fff'; ctx.fill();
     ctx.strokeStyle = '#64748b'; ctx.lineWidth = 2; ctx.stroke();
   });
-
   layout.positions.forEach((p, id) => {
-    const n = state.nodes.find(x => x.id === id);
-    if (!n) return;
+    const n = state.nodes.find(x => x.id === id); if (!n) return;
     const def = DEFS[n.type];
     const { x, y, w, h } = p;
     ctx.strokeStyle = def.color; ctx.fillStyle = def.fill || '#fff';
@@ -2293,7 +1874,6 @@ function exportPNG() {
       ctx.fillText(txt, x + w/2 + (n.type === 'declare' ? 7 : 0), y + h/2 + offY);
     }
   });
-
   ctx.restore();
   cvs.toBlob(blob => {
     const url = URL.createObjectURL(blob);
@@ -2304,9 +1884,7 @@ function exportPNG() {
   }, 'image/png');
 }
 
-/* ============================================================
-   GENERAZIONE C
-   ============================================================ */
+/* GENERAZIONE C */
 function cTypeOf(t) {
   switch (t) {
     case 'Integer': return 'int'; case 'Real': return 'double';
@@ -2316,7 +1894,7 @@ function cTypeOf(t) {
 }
 function cExpr(expr) {
   let e = String(expr).trim();
-  e = e.replace(/\bAND\b/g, '&&').replace(/\bOR\b/g, '||').replace(/\bNOT\b/g, '!');
+  e = e.replace(/\bAND\b/gi, '&&').replace(/\bOR\b/gi, '||').replace(/\bNOT\b/gi, '!');
   e = e.replace(/&([a-zA-Z_]\w*)/g, '$1');
   return e;
 }
@@ -2330,12 +1908,9 @@ function guessTypeOf(expr) {
 function generateC() {
   const lines = [];
   lines.push('/* Generato da FlowLab ' + APP.version + ' — linguaggio C */');
-  lines.push('#include <stdio.h>');
-  lines.push('#include <string.h>');
-  lines.push('');
+  lines.push('#include <stdio.h>'); lines.push('#include <string.h>'); lines.push('');
   lines.push('int main(void) {');
   const declared = {};
-
   state.nodes.forEach(n => {
     if (n.type !== 'declare') return;
     const t = (n.text || '').trim();
@@ -2358,16 +1933,13 @@ function generateC() {
       declared[name] = true;
     }
   });
-
   state.nodes.forEach(n => {
     if (n.type === 'for' && n.forData && n.forData.variable && !declared[n.forData.variable]) {
       lines.push('    int ' + n.forData.variable + ';');
       declared[n.forData.variable] = true;
     }
   });
-
   if (Object.keys(declared).length) lines.push('');
-
   state.nodes.forEach(n => {
     if (['declare','start','end','else','endif','endloop'].includes(n.type)) return;
     const t = (n.text || '').trim();
@@ -2443,21 +2015,16 @@ function generateC() {
       case 'break': lines.push('    break;'); break;
     }
   });
-
-  lines.push('');
-  lines.push('    return 0;');
-  lines.push('}');
+  lines.push(''); lines.push('    return 0;'); lines.push('}');
   return lines.join('\n');
 }
 
-/* ============================================================
-   GENERAZIONE PYTHON
-   ============================================================ */
+/* GENERAZIONE PYTHON */
 function pyExpr(expr) {
   let e = String(expr).trim();
-  e = e.replace(/\bAND\b/g, 'and').replace(/\bOR\b/g, 'or').replace(/\bNOT\b/g, 'not');
+  e = e.replace(/\bAND\b/gi, 'and').replace(/\bOR\b/gi, 'or').replace(/\bNOT\b/gi, 'not');
   e = e.replace(/&([a-zA-Z_]\w*)/g, '$1');
-  e = e.replace(/\btrue\b/g, 'True').replace(/\bfalse\b/g, 'False');
+  e = e.replace(/\btrue\b/gi, 'True').replace(/\bfalse\b/gi, 'False');
   return e;
 }
 function pyInputCast(varName) {
@@ -2470,33 +2037,25 @@ function pyInputCast(varName) {
 function generatePython() {
   const lines = [];
   lines.push('# Generato da FlowLab ' + APP.version + ' — linguaggio Python');
-  lines.push('');
-  lines.push('def main():');
+  lines.push(''); lines.push('def main():');
   let hasContent = false;
-
   state.nodes.forEach(n => {
     if (['start','end','else','endif','endloop'].includes(n.type)) return;
     const t = (n.text || '').trim();
     switch (n.type) {
-      case 'comment':
-        if (t) { lines.push('    # ' + t.replace(/^\/\//, '').trim()); hasContent = true; }
-        break;
+      case 'comment': if (t) { lines.push('    # ' + t.replace(/^\/\//, '').trim()); hasContent = true; } break;
       case 'declare': {
         if (n.declareType && /^[a-zA-Z_]\w*$/.test(t)) {
           let def = '0';
           if (n.declareType === 'String' || n.declareType === 'Character') def = '""';
           else if (n.declareType === 'Boolean') def = 'False';
-          lines.push('    ' + t + ' = ' + def);
-          hasContent = true;
-          return;
+          lines.push('    ' + t + ' = ' + def); hasContent = true; return;
         }
         const arrM = t.match(/^([a-zA-Z]+)\s+([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*$/);
         if (arrM && VALID_TYPE_RE.test(arrM[1])) {
           const ct = canonicalType(arrM[1]);
           const def = (ct === 'Integer' || ct === 'Real') ? '0' : (ct === 'Boolean' ? 'False' : '""');
-          lines.push('    ' + arrM[2] + ' = [' + def + '] * ' + arrM[3]);
-          hasContent = true;
-          return;
+          lines.push('    ' + arrM[2] + ' = [' + def + '] * ' + arrM[3]); hasContent = true; return;
         }
         const m = t.match(/^([a-zA-Z]+)\s+&?([a-zA-Z_]\w*)(?:\s*=\s*(.+))?$/);
         if (m && VALID_TYPE_RE.test(m[1])) {
@@ -2507,8 +2066,7 @@ function generatePython() {
           else if (ct === 'Integer' || ct === 'Real') def = '0';
           else if (ct === 'Boolean') def = 'False';
           else def = '""';
-          lines.push('    ' + name + ' = ' + def);
-          hasContent = true;
+          lines.push('    ' + name + ' = ' + def); hasContent = true;
         }
         break;
       }
@@ -2544,8 +2102,7 @@ function generatePython() {
           if (sm) args.push('"' + sm[1].replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"');
           else args.push(pyExpr(tt));
         }
-        lines.push('    print(' + args.join(', ') + ')');
-        hasContent = true;
+        lines.push('    print(' + args.join(', ') + ')'); hasContent = true;
         break;
       }
       case 'if': if (t) { lines.push('    if ' + pyExpr(t) + ':'); hasContent = true; } break;
@@ -2558,11 +2115,8 @@ function generatePython() {
         if (fd && fd.variable) {
           const step = Math.abs(Number(fd.step) || 1);
           const stepArg = step !== 1 ? ', ' + (fd.direction === 'dec' ? '-' : '') + step : '';
-          if (fd.direction === 'dec') {
-            lines.push('    for ' + fd.variable + ' in range(' + pyExpr(fd.start) + ', ' + pyExpr(fd.end) + ' - 1, -' + step + '):');
-          } else {
-            lines.push('    for ' + fd.variable + ' in range(' + pyExpr(fd.start) + ', ' + pyExpr(fd.end) + ' + 1' + stepArg + '):');
-          }
+          if (fd.direction === 'dec') lines.push('    for ' + fd.variable + ' in range(' + pyExpr(fd.start) + ', ' + pyExpr(fd.end) + ' - 1, -' + step + '):');
+          else lines.push('    for ' + fd.variable + ' in range(' + pyExpr(fd.start) + ', ' + pyExpr(fd.end) + ' + 1' + stepArg + '):');
           hasContent = true;
         } else {
           const m = t.match(/^&?([a-zA-Z_]\w*)\s*=\s*(.+?)\s+To\s+(.+?)(?:\s+Step\s+(.+))?$/i);
@@ -2579,7 +2133,6 @@ function generatePython() {
       case 'break': lines.push('    break'); hasContent = true; break;
     }
   });
-
   if (!hasContent) lines.push('    pass');
   lines.push(''); lines.push('');
   lines.push('if __name__ == "__main__":');
@@ -2587,9 +2140,7 @@ function generatePython() {
   return lines.join('\n');
 }
 
-/* ============================================================
-   FULLSCREEN
-   ============================================================ */
+/* FULLSCREEN */
 function toggleFullscreen() {
   if (!document.fullscreenElement) {
     const el = document.documentElement;
@@ -2602,61 +2153,39 @@ function toggleFullscreen() {
   }
 }
 
-/* ============================================================
-   MENU MOBILE
-   ============================================================ */
-function closeMobileMenu() {
-  const menu = $('mobileMenu');
-  if (menu) menu.hidden = true;
-}
+/* MENU MOBILE / PANNELLI */
+function closeMobileMenu() { const menu = $('mobileMenu'); if (menu) menu.hidden = true; }
 function openMobileMenu() {
-  const menu = $('mobileMenu');
-  if (!menu) return;
-  const s = $('mmSpeed');
-  if (s) s.value = state.speed;
-  const l = $('mmSpeedLabel');
-  if (l) l.textContent = SPEED_NAMES[state.speed];
+  const menu = $('mobileMenu'); if (!menu) return;
+  const s = $('mmSpeed'); if (s) s.value = state.speed;
+  const l = $('mmSpeedLabel'); if (l) l.textContent = SPEED_NAMES[state.speed];
   menu.hidden = false;
 }
 function toggleMobileMenu() {
-  const menu = $('mobileMenu');
-  if (!menu) return;
+  const menu = $('mobileMenu'); if (!menu) return;
   if (menu.hidden) openMobileMenu(); else closeMobileMenu();
 }
-
 function closeAllPanels() {
-  ['panelLeft', 'panelRight'].forEach(id => {
-    const el = $(id);
-    if (el) el.classList.remove('open');
-  });
+  ['panelLeft', 'panelRight'].forEach(id => { const el = $(id); if (el) el.classList.remove('open'); });
   document.querySelectorAll('.mtab[data-toggle]').forEach(t => t.classList.remove('mtab-active'));
 }
 function closeOtherPanel(exceptId) {
   ['panelLeft', 'panelRight'].forEach(id => {
     if (id === exceptId) return;
-    const el = $(id);
-    if (el) el.classList.remove('open');
+    const el = $(id); if (el) el.classList.remove('open');
     const tab = document.querySelector('.mtab[data-toggle="' + id + '"]');
     if (tab) tab.classList.remove('mtab-active');
   });
 }
 function togglePanel(panelId, tabEl) {
-  const panel = $(panelId);
-  if (!panel) return;
+  const panel = $(panelId); if (!panel) return;
   const willOpen = !panel.classList.contains('open');
   closeOtherPanel(panelId);
-  if (willOpen) {
-    panel.classList.add('open');
-    if (tabEl) tabEl.classList.add('mtab-active');
-  } else {
-    panel.classList.remove('open');
-    if (tabEl) tabEl.classList.remove('mtab-active');
-  }
+  if (willOpen) { panel.classList.add('open'); if (tabEl) tabEl.classList.add('mtab-active'); }
+  else { panel.classList.remove('open'); if (tabEl) tabEl.classList.remove('mtab-active'); }
 }
 
-/* ============================================================
-   EVENT LISTENERS
-   ============================================================ */
+/* EVENT LISTENERS */
 $('btnRun').addEventListener('click', runAll);
 $('btnStep').addEventListener('click', stepOnce);
 $('btnStop').addEventListener('click', stopRun);
@@ -2692,23 +2221,19 @@ $('cDownload').addEventListener('click', function() {
   setTimeout(() => URL.revokeObjectURL(url), 500);
   toast('File scaricato');
 });
-
 $('btnReset').addEventListener('click', function() {
   if (!confirm('Reset completo del progetto?')) return;
   doNewProject();
 });
-
 $('speedRange').addEventListener('input', function(e) {
   state.speed = parseInt(e.target.value, 10);
   $('speedLabel').textContent = SPEED_NAMES[state.speed];
 });
-
 $('ctZoomIn').addEventListener('click', () => zoomToCenter(state.zoom * 1.2));
 $('ctZoomOut').addEventListener('click', () => zoomToCenter(state.zoom / 1.2));
 $('ctReset').addEventListener('click', fitToView);
 $('btnClearConsole').addEventListener('click', cclear);
 
-/* Menu mobile */
 $('btnMenu').addEventListener('click', (e) => { e.stopPropagation(); toggleMobileMenu(); });
 $('mobileMenuBackdrop').addEventListener('click', closeMobileMenu);
 document.querySelectorAll('.mm-item').forEach(btn => {
@@ -2716,18 +2241,16 @@ document.querySelectorAll('.mm-item').forEach(btn => {
     const action = btn.dataset.action;
     closeMobileMenu();
     switch (action) {
-      case 'undo':       undo(); break;
-      case 'redo':       redo(); break;
-      case 'new':        newProject(); break;
-      case 'save':       saveToFile().catch(e => toast('Errore: ' + e.message)); break;
-      case 'load':       loadFromFile().catch(e => toast('Errore: ' + e.message)); break;
-      case 'exportPNG':  exportPNG(); break;
-      case 'exportC':    $('btnExportC').click(); break;
-      case 'exportPy':   $('btnExportPy').click(); break;
+      case 'undo': undo(); break;
+      case 'redo': redo(); break;
+      case 'new': newProject(); break;
+      case 'save': saveToFile().catch(e => toast('Errore: ' + e.message)); break;
+      case 'load': loadFromFile().catch(e => toast('Errore: ' + e.message)); break;
+      case 'exportPNG': exportPNG(); break;
+      case 'exportC': $('btnExportC').click(); break;
+      case 'exportPy': $('btnExportPy').click(); break;
       case 'fullscreen': toggleFullscreen(); break;
-      case 'reset':
-        if (confirm('Reset completo del progetto?')) doNewProject();
-        break;
+      case 'reset': if (confirm('Reset completo del progetto?')) doNewProject(); break;
     }
   });
 });
@@ -2742,8 +2265,6 @@ if (mmSpeedEl) {
     $('speedLabel').textContent = lbl;
   });
 }
-
-/* For modal */
 $('forOk').addEventListener('click', confirmForDialog);
 $('forCancel').addEventListener('click', closeForDialog);
 $('forClose').addEventListener('click', closeForDialog);
@@ -2754,8 +2275,6 @@ forModal.addEventListener('click', e => { if (e.target === forModal) closeForDia
     if (e.key === 'Escape') { e.preventDefault(); closeForDialog(); }
   });
 });
-
-/* Card */
 document.querySelectorAll('.card[data-add]').forEach(function(c) {
   c.addEventListener('click', function() {
     const type = c.dataset.add;
@@ -2773,50 +2292,36 @@ document.querySelectorAll('.card[data-add]').forEach(function(c) {
     if (window.innerWidth <= 800) closeAllPanels();
   });
 });
-
-/* Picker */
 document.querySelectorAll('.pick[data-add]').forEach(function(b) {
   b.addEventListener('click', function() {
     const type = b.dataset.add;
     pickerEl.hidden = true;
     const at = state.insertAt >= 0 ? state.insertAt : state.nodes.length - 1;
     const mode = state.insertMode || null;
-    state.insertAt = -1;
-    state.insertMode = null;
+    state.insertAt = -1; state.insertMode = null;
     if (type === 'declare') {
-      openTypePicker(null, (tipo) => {
-        addNode('declare', at, { declareType: tipo, mode: mode });
-        haptic();
-      });
+      openTypePicker(null, (tipo) => { addNode('declare', at, { declareType: tipo, mode: mode }); haptic(); });
       return;
     }
-    addNode(type, at, { mode: mode });
-    haptic();
+    addNode(type, at, { mode: mode }); haptic();
   });
 });
-
 $('pickerClose').addEventListener('click', () => { pickerEl.hidden = true; state.insertAt = -1; state.insertMode = null; });
 pickerEl.addEventListener('click', e => { if (e.target === pickerEl) { pickerEl.hidden = true; state.insertAt = -1; state.insertMode = null; } });
-
 $('typeClose').addEventListener('click', closeTypePicker);
 $('typeCancel').addEventListener('click', closeTypePicker);
 typeModal.addEventListener('click', e => { if (e.target === typeModal) closeTypePicker(); });
-
-/* Bottom tab */
 document.querySelectorAll('.mtab[data-toggle]').forEach(function(t) {
   t.addEventListener('click', function() { togglePanel(t.dataset.toggle, t); });
 });
 document.querySelectorAll('.panel-toggle[data-close]').forEach(function(b) {
   b.addEventListener('click', function() {
     const id = b.dataset.close;
-    const panel = $(id);
-    if (panel) panel.classList.remove('open');
+    const panel = $(id); if (panel) panel.classList.remove('open');
     const tab = document.querySelector('.mtab[data-toggle="' + id + '"]');
     if (tab) tab.classList.remove('mtab-active');
   });
 });
-
-/* Mobile action buttons (barra centrale) */
 const mtabRun = $('mtabRun');
 if (mtabRun) mtabRun.addEventListener('click', runAll);
 const mtabStep = $('mtabStep');
@@ -2824,7 +2329,6 @@ if (mtabStep) mtabStep.addEventListener('click', stepOnce);
 const mtabStop = $('mtabStop');
 if (mtabStop) mtabStop.addEventListener('click', stopRun);
 
-/* Var modal */
 $('btnAddVar').addEventListener('click', function() {
   $('varName').value = ''; $('varType').value = 'Integer'; $('varValue').value = '0';
   varModal.hidden = false;
@@ -2833,7 +2337,6 @@ $('btnAddVar').addEventListener('click', function() {
 $('varClose').addEventListener('click', () => { varModal.hidden = true; });
 $('varCancel').addEventListener('click', () => { varModal.hidden = true; });
 varModal.addEventListener('click', e => { if (e.target === varModal) varModal.hidden = true; });
-
 $('varOk').addEventListener('click', function() {
   const name = $('varName').value.trim().replace(/^&/, '');
   const type = $('varType').value;
@@ -2849,13 +2352,10 @@ $('varOk').addEventListener('click', function() {
   else val = String(raw);
   state.varDefs[name] = { type, default: val };
   state.variables[name] = { value: val, type };
-  renderVars();
-  varModal.hidden = true;
-  scheduleSave();
+  renderVars(); varModal.hidden = true; scheduleSave();
   state.dirty = true; updateSaveIndicator();
   toast('Variabile creata');
 });
-
 $('fileInput').addEventListener('change', function(e) {
   const f = e.target.files && e.target.files[0];
   if (f) {
@@ -2865,8 +2365,6 @@ $('fileInput').addEventListener('change', function(e) {
   }
   e.target.value = '';
 });
-
-/* Keyboard */
 document.addEventListener('keydown', function(e) {
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
@@ -2885,40 +2383,28 @@ document.addEventListener('keydown', function(e) {
     state.insertAt = -1; state.insertMode = null;
   }
 }, true);
-
-/* Resize */
 let resizeTimer = null;
 function handleResize() {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     if (window.innerWidth > 800) { closeAllPanels(); closeMobileMenu(); }
-    clampPan();
-    applyTransform();
+    clampPan(); applyTransform();
   }, 100);
 }
 window.addEventListener('resize', handleResize);
 window.addEventListener('orientationchange', handleResize);
-
 document.addEventListener('fullscreenchange', function() {
   const isFs = !!document.fullscreenElement;
   $('btnFullscreen').title = isFs ? 'Esci' : 'Schermo intero';
   setTimeout(() => { clampPan(); applyTransform(); }, 100);
 });
-
 window.addEventListener('beforeunload', function(e) {
-  if (state.dirty) {
-    e.preventDefault();
-    e.returnValue = '';
-    return '';
-  }
+  if (state.dirty) { e.preventDefault(); e.returnValue = ''; return ''; }
 });
 
-/* ============================================================
-   INIT
-   ============================================================ */
+/* INIT */
 function init() {
   clog('FlowLab v' + APP.version + ' — pronto', 'sys');
-
   (async () => {
     const stored = await loadHandleFromDB(FILE_HANDLE_KEY);
     if (stored) {
@@ -2932,7 +2418,6 @@ function init() {
       } catch (e) {}
     }
   })();
-
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js')
@@ -2940,7 +2425,6 @@ function init() {
         .catch(err => clog('SW error: ' + err.message, 'warn'));
     });
   }
-
   const loaded = loadAuto();
   if (!loaded || state.nodes.length === 0) {
     state.nodes = [
@@ -2949,30 +2433,23 @@ function init() {
     ];
   }
   ensureStartEnd();
-
   render();
-  setTimeout(() => { layoutAll(); centerDiagram(); }, 300);
-  setTimeout(() => { layoutAll(); centerDiagram(); }, 600);
-
+  setTimeout(() => { layoutAll(); }, 300);
+  setTimeout(() => { layoutAll(); }, 600);
   requestAnimationFrame(function() {
     renderVars();
-    state.history = [snapshot()];
-    state.histIdx = 0;
-    state.dirty = false;
-    updateSaveIndicator();
-    statusText.textContent = 'Pronto';
-    statusSteps.textContent = '0 step';
+    state.history = [snapshot()]; state.histIdx = 0;
+    state.dirty = false; updateSaveIndicator();
+    statusText.textContent = 'Pronto'; statusSteps.textContent = '0 step';
     if (!loaded) saveAuto();
     clog('Zoom: rotellina del mouse (desktop) o pinch (mobile)', 'sys');
     clog('Pan: tasto centrale · click sinistro sul vuoto · 1 dito su mobile', 'sys');
   });
-
   try {
     localStorage.setItem('__fl__', '1');
     localStorage.removeItem('__fl__');
   } catch (e) { clog('localStorage non disponibile', 'warn'); }
 }
-
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
