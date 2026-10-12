@@ -7,6 +7,8 @@
    - Cache per evitare ricalcoli O(N²)
    - Operatori logici: AND/OR/NOT (case-insensitive) + &&, ||, !
    - Dichiara multi-variabile: "Integer a, b, c"
+   - FIX: aggiunta blocchi in coda ai rami (If/Else/Loop) tramite
+     "+" finale e link al merge, con insertAt corretto
    ============================================================ */
 'use strict';
 
@@ -520,6 +522,9 @@ function parseBlock(nodes, start, end) {
         hasElse: elseIdx >= 0, endifIndex: endifIdx, elseIndex: elseIdx,
         trueInsertAt: i + 1,
         falseInsertAt: elseIdx >= 0 ? elseIdx + 1 : endifIdx,
+        /* NUOVO: inserimento IN CODA ai rami (dopo l'ultimo nodo del ramo) */
+        trueEndInsertAt:  elseIdx >= 0 ? elseIdx : endifIdx,  // = posizione di else/endif
+        falseEndInsertAt: endifIdx,                            // = posizione di endif
       });
       i = endifIdx + 1; continue;
     }
@@ -709,13 +714,19 @@ function buildLayout() {
         const mergeId = 'merge_' + item.node.id;
         merges.push({ id: mergeId, x: cx, y: mergeY });
 
+        /* ---- FALSE ultimo nodo → merge: ora insertAt è in CODA al ramo ---- */
         if (falseLastId) {
           links.push({
             from: { x: falseCX, y: falseLastBottomY, id: falseLastId },
             to:   { x: cx, y: mergeY, id: mergeId, isMerge: true },
             type: 'false',
             corners: [{ x: falseCX, y: mergeY }],
-            insertAt: item.falseInsertAt,
+            insertAt: item.falseEndInsertAt,
+          });
+          plusPts.push({
+            x: falseCX,
+            y: (falseLastBottomY + mergeY) / 2,
+            insertAt: item.falseEndInsertAt,
           });
         } else {
           const falseMode = item.hasElse ? null : 'false-no-else';
@@ -729,13 +740,19 @@ function buildLayout() {
           plusPts.push({ x: falseCX, y: (ifCY + mergeY) / 2, insertAt: item.falseInsertAt, insertMode: falseMode });
         }
 
+        /* ---- TRUE ultimo nodo → merge: insertAt in CODA al ramo ---- */
         if (trueLastId) {
           links.push({
             from: { x: trueCX, y: trueLastBottomY, id: trueLastId },
             to:   { x: cx, y: mergeY, id: mergeId, isMerge: true },
             type: 'true',
             corners: [{ x: trueCX, y: mergeY }],
-            insertAt: item.endifIndex,
+            insertAt: item.trueEndInsertAt,
+          });
+          plusPts.push({
+            x: trueCX,
+            y: (trueLastBottomY + mergeY) / 2,
+            insertAt: item.trueEndInsertAt,
           });
         } else {
           links.push({
@@ -802,12 +819,19 @@ function buildLayout() {
         const mergeId = 'merge_' + item.node.id;
         merges.push({ id: mergeId, x: cx, y: mergeY });
 
+        /* ---- Corpo loop: insertAt già corretto (endloopIndex).
+                Aggiunto il "+" finale per aggiungere in coda al corpo. ---- */
         if (bodyEnd.lastId) {
           links.push({
             from: { x: bodyCX, y: bodyEnd.lastBottomY, id: bodyEnd.lastId },
             to:   { x: cx, y: mergeY, id: mergeId, isMerge: true },
             type: 'loop',
             corners: [{ x: bodyCX, y: mergeY }],
+            insertAt: item.endloopIndex,
+          });
+          plusPts.push({
+            x: bodyCX,
+            y: (bodyEnd.lastBottomY + mergeY) / 2,
             insertAt: item.endloopIndex,
           });
         } else {
