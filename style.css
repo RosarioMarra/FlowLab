@@ -560,7 +560,7 @@ input, select, textarea { font-family: inherit; }
   border-radius: 4px;
   color: var(--text);
   font-family: ui-monospace, 'SF Mono', Consolas, monospace;
-  font-size: 13px; font-weight: 500;
+  font-size: 12px; font-weight: 500;
   padding: 4px 8px;
   width: 100%; max-width: 100%; min-width: 0;
   text-align: center;
@@ -912,7 +912,6 @@ input, select, textarea { font-family: inherit; }
 
   .topbar { padding: 0 10px; gap: 8px; }
   .brand-logo { height: 30px; width: 30px; }
-  /* Mostra "FlowLab" anche su mobile */
   .brand-name { display: inline; font-size: 16px; }
 
   .toolbar {
@@ -937,8 +936,6 @@ input, select, textarea { font-family: inherit; }
   .tb-secondary { display: none !important; }
   .tb-sep.tb-secondary { display: none !important; }
 
-  /* Nasconde i bottoni Esegui/Passo/Stop dalla topbar su mobile:
-     sono disponibili nella barra in basso al centro */
   .tb-run-control { display: none !important; }
 
   .menu-btn { display: inline-flex; margin-left: auto; }
@@ -961,7 +958,6 @@ input, select, textarea { font-family: inherit; }
   .panel.open { transform: translateX(0); }
   .panel-toggle { display: flex; }
 
-  /* ---- Mobile tabs: [Blocchi]  [Passo Esegui Stop]  [Console] ---- */
   .mobile-tabs {
     display: grid;
     grid-template-columns: 1fr auto 1fr;
@@ -990,7 +986,6 @@ input, select, textarea { font-family: inherit; }
   .mtab.mtab-active { color: var(--accent); }
   .mtab.mtab-active .ico { color: var(--accent); }
 
-  /* Gruppo centrale */
   .mtab-center {
     display: flex;
     align-items: center;

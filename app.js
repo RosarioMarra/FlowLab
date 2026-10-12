@@ -1,14 +1,11 @@
 /* ============================================================
    FlowLab v24 — Layout che non si sovrappone MAI
-   - subtreeInfo() ritorna {left, right}: estensione reale del
-     sottoalbero rispetto al suo centro di layout
-   - I centri dei rami FALSE/TRUE sono calcolati con vincoli
-     espliciti di non-sovrapposizione + distanza minima dal vertice
-   - Cache per evitare ricalcoli O(N²)
-   - Operatori logici: AND/OR/NOT (case-insensitive) + &&, ||, !
    - Dichiara multi-variabile: "Integer a, b, c"
-   - FIX: aggiunta blocchi in coda ai rami (If/Else/Loop) tramite
-     "+" finale e link al merge, con insertAt corretto
+   - Aggiunta blocchi in coda ai rami (If/Else/Loop)
+   - FIX definitivo testo tagliato:
+       * misura DOM-based (font/letter-spacing reali)
+       * padding per-forma coerente col CSS
+       * passo di convergenza post-render sui scrollWidth
    ============================================================ */
 'use strict';
 
@@ -43,16 +40,30 @@ const VALID_TYPE_RE = /^(Integer|Real|String|Boolean|Character|Int|Float|Double|
 const TYPE_KEYWORD_RE = /^(Integer|Real|String|Boolean|Character|Int|Float|Double|Bool|Char|Str|Num|Long)$/i;
 
 const VGAP            = 26;
-const HGAP            = 22;   /* spazio orizzontale minimo tra rami fratelli */
-const MIN_HORIZ_LEN   = 30;   /* tratto orizzontale minimo dal vertice IF */
-const BACK_EDGE_LEN   = 30;   /* spazio a sinistra del loop per il back-edge */
-const EMPTY_BRANCH_H  = 10;
-const MERGE_GAP       = 10;
+const HGAP            = 22;
+const MIN_HORIZ_LEN   = 30;
+const BACK_EDGE_LEN   = 30;
+const EMPTY_BRANCH_H  = 20;
+const MERGE_GAP       = 44;
 
-const MIN_NODE_W = 170;
-const MAX_NODE_W = 320;
+const MIN_NODE_W = 180;
+const MAX_NODE_W = 2400;   /* tetto alto: il blocco si allarga quanto serve */
 const MIN_ZOOM = 0.10;
 const MAX_ZOOM = 2.5;
+
+/* ---- Font di misura (DEVONO combaciare con style.css) ---- */
+const FONT_LABEL    = "700 10px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+const FONT_SUBLABEL = "700 10.5px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+const FONT_CONTENT  = "500 12px ui-monospace, 'SF Mono', Consolas, monospace";
+const LABEL_LS      = '0.6px';   /* .node-label letter-spacing: .06em @10px = 0.6px */
+
+/* Padding orizzontale del .node per forma (dal CSS) */
+const SHAPE_PAD_X = {
+  oval: 22, rect: 22, 'rect-dashed': 22, comment: 22, marker: 22,
+  parallelogram: 46, diamond: 54, hex: 46,
+};
+const INPUT_PAD_X = 8;   /* .node-input padding: 4px 8px */
+const WIDTH_SAFETY = 24; /* margine di sicurezza extra */
 
 const TOP_ANCHOR_Y = 24;
 const PAN_MARGIN = 80;
@@ -107,11 +118,36 @@ function haptic() { if (navigator.vibrate) { try { navigator.vibrate(8); } catch
 function svgClose() { return '<svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>'; }
 function svgPlus() { return '<svg viewBox="0 0 24 24" class="ico"><path d="M11 5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z" fill="currentColor"/></svg>'; }
 
+/* ----------------------------------------------------------------
+   MISURA DOM-BASED: span nascosto con font/letter-spacing identici
+   al CSS reale → misura precisa, niente più testo tagliato.
+   ---------------------------------------------------------------- */
+let _measEl = null;
+function getMeasEl() {
+  if (_measEl) return _measEl;
+  _measEl = document.createElement('span');
+  _measEl.style.cssText =
+    'position:absolute;left:-99999px;top:0;white-space:pre;' +
+    'pointer-events:none;visibility:hidden;display:inline-block;';
+  document.body.appendChild(_measEl);
+  return _measEl;
+}
+function measureTextWidth(text, font, letterSpacing) {
+  if (!text) return 0;
+  const el = getMeasEl();
+  el.style.font = font || FONT_CONTENT;
+  el.style.letterSpacing = letterSpacing || 'normal';
+  const lines = String(text).split('\n');
+  let max = 0;
+  for (const l of lines) {
+    el.textContent = l.length ? l : ' ';
+    const w = el.getBoundingClientRect().width;
+    if (w > max) max = w;
+  }
+  return max;
+}
+
 /* -------- Multi-dichiarazione: parsing nomi -------- */
-/* Divide "a, b, c" oppure "a b c" in ['a','b','c'].
-   Filtra tutto ciò che non è un identificatore valido e scarta
-   eventuali keyword di tipo (Integer, Real, ...) in modo che se
-   l'utente scrive "Integer a, b" i nomi restino solo a, b. */
 function parseDeclareNames(text) {
   if (!text) return [];
   return String(text)
@@ -207,29 +243,26 @@ function formatForText(node) {
   return `${d.variable} = ${s} ${dir} ${e}${stepText}`;
 }
 
-const _mc = document.createElement('canvas').getContext('2d');
-function measureTextWidth(text, font) {
-  if (!text) return 0;
-  _mc.font = font || '13px ui-monospace, monospace';
-  const lines = String(text).split('\n');
-  let max = 0;
-  for (const l of lines) max = Math.max(max, _mc.measureText(l).width);
-  return max;
-}
+/* ----------------------------------------------------------------
+   MISURA NODO — larghezza calcolata per far entrare TUTTO il testo
+   ---------------------------------------------------------------- */
 function measureNode(node) {
   const def = DEFS[node.type]; if (!def) return { w: MIN_NODE_W, h: 60 };
-  const labelW = measureTextWidth(def.label.toUpperCase(), 'bold 10px system-ui, sans-serif');
+
+  const labelW = measureTextWidth(def.label.toUpperCase(), FONT_LABEL, LABEL_LS);
+  const subW   = node.declareType ? measureTextWidth(node.declareType, FONT_SUBLABEL, 'normal') : 0;
   let contentW = 0;
-  if (node.type === 'for') contentW = measureTextWidth(formatForText(node), '13px ui-monospace, monospace');
-  else if (def.editable) contentW = measureTextWidth(node.text || def.ph || '', '13px ui-monospace, monospace');
-  let padX = 46;
-  switch (def.shape) {
-    case 'parallelogram': padX = 100; break;
-    case 'diamond': padX = 110; break;
-    case 'hex': padX = 100; break;
-  }
-  const extraH = node.declareType ? 16 : 0;
-  let w = Math.min(MAX_NODE_W, Math.max(MIN_NODE_W, Math.max(labelW, contentW) + padX));
+  if (node.type === 'for') contentW = measureTextWidth(formatForText(node), FONT_CONTENT, 'normal');
+  else if (def.editable) contentW = measureTextWidth(node.text || def.ph || '', FONT_CONTENT, 'normal');
+
+  const padX = (SHAPE_PAD_X[def.shape] || 22) + INPUT_PAD_X;
+  const needed = Math.max(labelW, subW, contentW) + 2 * padX + WIDTH_SAFETY;
+
+  /* _extraW: aggiunto dal passo di convergenza se il testo non entra ancora */
+  let w = Math.max(MIN_NODE_W, needed + (node._extraW || 0));
+  w = Math.min(MAX_NODE_W, w);
+
+  const extraH = node.declareType ? 14 : 0;
   let h = 56 + extraH;
   if (def.shape === 'diamond') h = 100;
   else if (def.shape === 'oval') h = 52;
@@ -399,25 +432,19 @@ function createNodeEl(node, idx) {
     input.spellcheck = false; input.autocomplete = 'off';
     input.addEventListener('input', () => {
       const n = state.nodes.find(x => x.id === node.id); if (!n) return;
-
-      /* Vecchi nomi (solo per declare con tipo selezionato) */
       const oldNames = (n.type === 'declare' && n.declareType)
         ? parseDeclareNames(n.text || '')
         : [];
-
       n.text = input.value;
-
+      n._extraW = 0;   /* reset: ricalcoliamo da capo */
       if (n.type === 'declare' && n.declareType) {
         const newNames = parseDeclareNames(input.value);
-
-        /* Rimuovi quelli che non ci sono più */
         for (const oldN of oldNames) {
           if (!newNames.includes(oldN)) {
             delete state.varDefs[oldN];
             delete state.variables[oldN];
           }
         }
-        /* Aggiungi/aggiorna quelli nuovi */
         for (const name of newNames) {
           if (!state.varDefs[name]) {
             state.varDefs[name] = { type: n.declareType, default: TYPE_DEFAULTS[n.declareType] };
@@ -427,7 +454,8 @@ function createNodeEl(node, idx) {
         }
         renderVars();
       }
-      requestAnimationFrame(layoutAll); scheduleSave();
+      requestAnimationFrame(() => { layoutAll(); convergeLayout(); });
+      scheduleSave();
       state.dirty = true; updateSaveIndicator();
     });
     input.addEventListener('mousedown', e => e.stopPropagation());
@@ -522,9 +550,8 @@ function parseBlock(nodes, start, end) {
         hasElse: elseIdx >= 0, endifIndex: endifIdx, elseIndex: elseIdx,
         trueInsertAt: i + 1,
         falseInsertAt: elseIdx >= 0 ? elseIdx + 1 : endifIdx,
-        /* NUOVO: inserimento IN CODA ai rami (dopo l'ultimo nodo del ramo) */
-        trueEndInsertAt:  elseIdx >= 0 ? elseIdx : endifIdx,  // = posizione di else/endif
-        falseEndInsertAt: endifIdx,                            // = posizione di endif
+        trueEndInsertAt:  elseIdx >= 0 ? elseIdx : endifIdx,
+        falseEndInsertAt: endifIdx,
       });
       i = endifIdx + 1; continue;
     }
@@ -714,7 +741,6 @@ function buildLayout() {
         const mergeId = 'merge_' + item.node.id;
         merges.push({ id: mergeId, x: cx, y: mergeY });
 
-        /* ---- FALSE ultimo nodo → merge: ora insertAt è in CODA al ramo ---- */
         if (falseLastId) {
           links.push({
             from: { x: falseCX, y: falseLastBottomY, id: falseLastId },
@@ -740,7 +766,6 @@ function buildLayout() {
           plusPts.push({ x: falseCX, y: (ifCY + mergeY) / 2, insertAt: item.falseInsertAt, insertMode: falseMode });
         }
 
-        /* ---- TRUE ultimo nodo → merge: insertAt in CODA al ramo ---- */
         if (trueLastId) {
           links.push({
             from: { x: trueCX, y: trueLastBottomY, id: trueLastId },
@@ -819,8 +844,6 @@ function buildLayout() {
         const mergeId = 'merge_' + item.node.id;
         merges.push({ id: mergeId, x: cx, y: mergeY });
 
-        /* ---- Corpo loop: insertAt già corretto (endloopIndex).
-                Aggiunto il "+" finale per aggiungere in coda al corpo. ---- */
         if (bodyEnd.lastId) {
           links.push({
             from: { x: bodyCX, y: bodyEnd.lastBottomY, id: bodyEnd.lastId },
@@ -1005,6 +1028,37 @@ function layoutAll() {
   else { clampPan(); applyTransform(); }
 }
 
+/* ----------------------------------------------------------------
+   CONVERGENZA: se dopo il render un input è ancora scrollabile,
+   allarga il nodo (_extraW) e rifai layout. Max 5 iterazioni.
+   ---------------------------------------------------------------- */
+let _convToken = 0;
+function convergeLayout() {
+  const myToken = ++_convToken;
+  let iter = 0;
+  const step = () => {
+    if (myToken !== _convToken) return;
+    let changed = false;
+    state.nodes.forEach(n => {
+      const el = nodesEl.querySelector('.node[data-id="' + n.id + '"]');
+      if (!el) return;
+      const inp = el.querySelector('.node-input');
+      if (!inp || inp.classList.contains('for-display')) return;
+      const over = inp.scrollWidth - inp.clientWidth;
+      if (over > 1) {
+        n._extraW = (n._extraW || 0) + over + 8;
+        changed = true;
+      }
+    });
+    if (changed && iter < 5) {
+      iter++;
+      layoutAll();
+      requestAnimationFrame(step);
+    }
+  };
+  step();
+}
+
 function render() {
   nodesEl.innerHTML = '';
   state.nodes.forEach((n, i) => {
@@ -1013,7 +1067,11 @@ function render() {
   });
   void nodesEl.offsetHeight;
   layoutAll();
-  requestAnimationFrame(() => { layoutAll(); setTimeout(layoutAll, 80); });
+  requestAnimationFrame(() => {
+    layoutAll();
+    convergeLayout();
+    setTimeout(() => { layoutAll(); convergeLayout(); }, 80);
+  });
 }
 
 function applyTransform() {
@@ -1213,6 +1271,7 @@ function confirmForDialog() {
     end: $('forEnd').value.trim() || '10',
     direction: direction, step: step,
   };
+  node._extraW = 0;
   state.varDefs[variable] = state.varDefs[variable] || { type: 'Integer', default: 0 };
   renderVars(); render(); pushHistory(); scheduleSave();
   state.dirty = true; updateSaveIndicator();
@@ -1270,10 +1329,8 @@ function deleteNode(id) {
     }
   }
   if (n.type === 'declare') {
-    /* Rimuovi TUTTE le variabili dichiarate dal blocco */
     const names = parseDeclareNames(n.text || '');
     if (names.length === 0) {
-      /* fallback legacy: singolo nome scritto direttamente */
       const vn = (n.text || '').trim();
       if (vn) { delete state.varDefs[vn]; delete state.variables[vn]; }
     } else {
@@ -1451,7 +1508,6 @@ async function execSimple(node) {
     }
     case 'output': clog(evaluateOutput(text), 'out'); return 'ok';
     case 'declare': {
-      /* --- Multi-dichiarazione: "a, b, c" --- */
       if (node.declareType && text) {
         const names = parseDeclareNames(text);
         if (names.length > 0) {
@@ -1466,7 +1522,6 @@ async function execSimple(node) {
           return 'ok';
         }
       }
-      /* --- Legacy: array "Integer arr[10]" --- */
       const arrM = text.match(/^([a-zA-Z]+)\s+([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*$/);
       if (arrM && VALID_TYPE_RE.test(arrM[1])) {
         const type = canonicalType(arrM[1]);
@@ -1476,7 +1531,6 @@ async function execSimple(node) {
         state.variables[name] = { value: arr, type: type + '[]' };
         renderVars(); clog(type + ' ' + name + '[' + size + ']', 'step'); return 'ok';
       }
-      /* --- Legacy: "Integer a = 5" --- */
       const m = text.match(/^([a-zA-Z]+)\s+&?([a-zA-Z_]\w*)(?:\s*=\s*(.+))?$/);
       if (!m || !VALID_TYPE_RE.test(m[1])) throw new Error('Dichiara: usa "Integer a, b, c" oppure seleziona il tipo dal popup');
       const type = canonicalType(m[1]), name = m[2], expr = m[3];
@@ -1909,12 +1963,12 @@ function exportPNG() {
     ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
     if (n.type === 'declare') { ctx.beginPath(); ctx.moveTo(x + 14, y); ctx.lineTo(x + 14, y + h); ctx.stroke(); }
     ctx.fillStyle = def.color;
-    ctx.font = 'bold 10px system-ui, sans-serif';
+    ctx.font = "700 10px system-ui, sans-serif";
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(def.label.toUpperCase(), x + w/2 + (n.type === 'declare' ? 7 : 0), y + 14);
     if (n.type === 'declare' && n.declareType) {
       ctx.fillStyle = '#B8860B';
-      ctx.font = 'bold 10px system-ui, sans-serif';
+      ctx.font = "700 10.5px system-ui, sans-serif";
       ctx.fillText(n.declareType, x + w/2 + 7, y + 28);
     }
     let txt = '';
@@ -1922,7 +1976,7 @@ function exportPNG() {
     else if (n.text) txt = n.text;
     if (txt) {
       ctx.fillStyle = '#1f2937';
-      ctx.font = '13px ui-monospace, monospace';
+      ctx.font = "500 12px ui-monospace, 'SF Mono', Consolas, monospace";
       const offY = (n.type === 'declare' && n.declareType) ? 12 : 8;
       ctx.fillText(txt, x + w/2 + (n.type === 'declare' ? 7 : 0), y + h/2 + offY);
     }
@@ -1964,12 +2018,10 @@ function generateC() {
   lines.push('int main(void) {');
   const declared = {};
 
-  /* Dichiarazioni (multi-variabile + legacy) */
   state.nodes.forEach(n => {
     if (n.type !== 'declare') return;
     const t = (n.text || '').trim();
 
-    /* Nuovo formato: tipo selezionato + "a, b, c" */
     if (n.declareType) {
       const names = parseDeclareNames(t);
       const toDecl = names.filter(name => !declared[name]);
@@ -1980,7 +2032,6 @@ function generateC() {
       return;
     }
 
-    /* Legacy array */
     const arrM = t.match(/^([a-zA-Z]+)\s+([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*$/);
     if (arrM && VALID_TYPE_RE.test(arrM[1])) {
       const ct = canonicalType(arrM[1]);
@@ -1991,7 +2042,6 @@ function generateC() {
       return;
     }
 
-    /* Legacy tipizzato: "Integer a = 5" */
     const m = t.match(/^([a-zA-Z]+)\s+&?([a-zA-Z_]\w*)(?:\s*=\s*(.+))?$/);
     if (m && VALID_TYPE_RE.test(m[1]) && !declared[m[2]]) {
       const ct = cTypeOf(canonicalType(m[1]));
@@ -2002,7 +2052,6 @@ function generateC() {
     }
   });
 
-  /* Variabili del For non dichiarate esplicitamente */
   state.nodes.forEach(n => {
     if (n.type === 'for' && n.forData && n.forData.variable && !declared[n.forData.variable]) {
       lines.push('    int ' + n.forData.variable + ';');
@@ -2011,7 +2060,6 @@ function generateC() {
   });
   if (Object.keys(declared).length) lines.push('');
 
-  /* Corpo */
   state.nodes.forEach(n => {
     if (['declare','start','end','else','endif','endloop'].includes(n.type)) return;
     const t = (n.text || '').trim();
@@ -2116,7 +2164,6 @@ function generatePython() {
     switch (n.type) {
       case 'comment': if (t) { lines.push('    # ' + t.replace(/^\/\//, '').trim()); hasContent = true; } break;
       case 'declare': {
-        /* Nuovo formato multi: tipo selezionato + "a, b, c" */
         if (n.declareType) {
           const names = parseDeclareNames(t);
           let def = '0';
@@ -2128,14 +2175,12 @@ function generatePython() {
           if (names.length > 0) hasContent = true;
           return;
         }
-        /* Legacy array */
         const arrM = t.match(/^([a-zA-Z]+)\s+([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*$/);
         if (arrM && VALID_TYPE_RE.test(arrM[1])) {
           const ct = canonicalType(arrM[1]);
           const def = (ct === 'Integer' || ct === 'Real') ? '0' : (ct === 'Boolean' ? 'False' : '""');
           lines.push('    ' + arrM[2] + ' = [' + def + '] * ' + arrM[3]); hasContent = true; return;
         }
-        /* Legacy tipizzato: "Integer a = 5" */
         const m = t.match(/^([a-zA-Z]+)\s+&?([a-zA-Z_]\w*)(?:\s*=\s*(.+))?$/);
         if (m && VALID_TYPE_RE.test(m[1])) {
           const ct = canonicalType(m[1]);
@@ -2509,8 +2554,8 @@ function init() {
   }
   ensureStartEnd();
   render();
-  setTimeout(() => { layoutAll(); }, 300);
-  setTimeout(() => { layoutAll(); }, 600);
+  setTimeout(() => { layoutAll(); convergeLayout(); }, 300);
+  setTimeout(() => { layoutAll(); convergeLayout(); }, 600);
   requestAnimationFrame(function() {
     renderVars();
     state.history = [snapshot()]; state.histIdx = 0;
