@@ -6,6 +6,7 @@
      espliciti di non-sovrapposizione + distanza minima dal vertice
    - Cache per evitare ricalcoli O(N²)
    - Operatori logici: AND/OR/NOT (case-insensitive) + &&, ||, !
+   - Dichiara multi-variabile: "Integer a, b, c"
    ============================================================ */
 'use strict';
 
@@ -20,7 +21,7 @@ const DEFS = {
   end:     { label:'End',      shape:'oval',          color:'#9370DB', fill:'#E8D5F5', editable:false, deletable:false, draggable:false },
   input:   { label:'Input',    shape:'parallelogram', color:'#1976D2', fill:'#D6E8F5', editable:true,  deletable:true,  ph:'nome' },
   output:  { label:'Output',   shape:'parallelogram', color:'#2E7D32', fill:'#D4F1D4', editable:true,  deletable:true,  ph:'"Ciao" & nome' },
-  declare: { label:'Dichiara', shape:'rect-dashed',   color:'#B8860B', fill:'#FFF9C4', editable:true,  deletable:true,  ph:'nome' },
+  declare: { label:'Dichiara', shape:'rect-dashed',   color:'#B8860B', fill:'#FFF9C4', editable:true,  deletable:true,  ph:'a, b, c' },
   assign:  { label:'Assegna',  shape:'rect',          color:'#F9A825', fill:'#FFF9C4', editable:true,  deletable:true,  ph:'x = x + 1' },
   if:      { label:'If',       shape:'diamond',       color:'#C2185B', fill:'#FFD9E0', editable:true,  deletable:true,  ph:'x > 5' },
   else:    { label:'Else',     shape:'marker',        color:'#C2185B', fill:'#FFE8EE', editable:false, deletable:true },
@@ -37,6 +38,7 @@ const SPEEDS = { 1: 1200, 2: 700, 3: 350, 4: 150, 5: 40 };
 const SPEED_NAMES = { 1: 'Lenta', 2: 'Lenta', 3: 'Normale', 4: 'Veloce', 5: 'Turbo' };
 const TYPE_DEFAULTS = { Integer: 0, Real: 0.0, String: '', Boolean: false, Character: '\0' };
 const VALID_TYPE_RE = /^(Integer|Real|String|Boolean|Character|Int|Float|Double|Bool|Char|Str|Num|Long)$/i;
+const TYPE_KEYWORD_RE = /^(Integer|Real|String|Boolean|Character|Int|Float|Double|Bool|Char|Str|Num|Long)$/i;
 
 const VGAP            = 26;
 const HGAP            = 22;   /* spazio orizzontale minimo tra rami fratelli */
@@ -102,6 +104,21 @@ function toast(msg, ms = 2000) {
 function haptic() { if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} } }
 function svgClose() { return '<svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>'; }
 function svgPlus() { return '<svg viewBox="0 0 24 24" class="ico"><path d="M11 5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z" fill="currentColor"/></svg>'; }
+
+/* -------- Multi-dichiarazione: parsing nomi -------- */
+/* Divide "a, b, c" oppure "a b c" in ['a','b','c'].
+   Filtra tutto ciò che non è un identificatore valido e scarta
+   eventuali keyword di tipo (Integer, Real, ...) in modo che se
+   l'utente scrive "Integer a, b" i nomi restino solo a, b. */
+function parseDeclareNames(text) {
+  if (!text) return [];
+  return String(text)
+    .split(/[,\s]+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0
+              && /^[a-zA-Z_]\w*$/.test(s)
+              && !TYPE_KEYWORD_RE.test(s));
+}
 
 function clog(text, cls = 'out') {
   const line = document.createElement('div');
@@ -342,20 +359,23 @@ function createNodeEl(node, idx) {
   if (node.type === 'declare' && node.declareType) {
     const sub = document.createElement('span');
     sub.className = 'node-sublabel'; sub.textContent = node.declareType;
-    sub.title = 'Clicca per cambiare il tipo';
+    sub.title = 'Clicca per cambiare il tipo (per tutte le variabili)';
     sub.addEventListener('click', e => {
       e.stopPropagation();
       openTypePicker(node.declareType, (newType) => {
         const n = state.nodes.find(x => x.id === node.id); if (!n) return;
-        const oldName = (n.text || '').trim();
         n.declareType = newType;
-        if (oldName && state.varDefs[oldName]) {
-          state.varDefs[oldName].type = newType;
-          if (state.variables[oldName]) state.variables[oldName].type = newType;
+        const names = parseDeclareNames(n.text);
+        for (const name of names) {
+          if (state.varDefs[name]) state.varDefs[name].type = newType;
+          if (state.variables[name]) state.variables[name].type = newType;
         }
         renderVars(); render(); scheduleSave();
         state.dirty = true; updateSaveIndicator();
-        toast('Tipo cambiato in ' + newType);
+        const n2 = names.length;
+        toast(n2 > 1
+          ? 'Tipo cambiato in ' + newType + ' per ' + n2 + ' variabili'
+          : 'Tipo cambiato in ' + newType);
       });
     });
     body.appendChild(sub);
@@ -377,15 +397,32 @@ function createNodeEl(node, idx) {
     input.spellcheck = false; input.autocomplete = 'off';
     input.addEventListener('input', () => {
       const n = state.nodes.find(x => x.id === node.id); if (!n) return;
-      const oldName = (n.text || '').trim();
+
+      /* Vecchi nomi (solo per declare con tipo selezionato) */
+      const oldNames = (n.type === 'declare' && n.declareType)
+        ? parseDeclareNames(n.text || '')
+        : [];
+
       n.text = input.value;
-      const newName = input.value.trim();
+
       if (n.type === 'declare' && n.declareType) {
-        if (oldName && oldName !== newName) {
-          if (state.varDefs[oldName]) { state.varDefs[newName] = state.varDefs[oldName]; delete state.varDefs[oldName]; }
-          if (state.variables[oldName]) { state.variables[newName] = state.variables[oldName]; delete state.variables[oldName]; }
+        const newNames = parseDeclareNames(input.value);
+
+        /* Rimuovi quelli che non ci sono più */
+        for (const oldN of oldNames) {
+          if (!newNames.includes(oldN)) {
+            delete state.varDefs[oldN];
+            delete state.variables[oldN];
+          }
         }
-        if (newName) state.varDefs[newName] = { type: n.declareType, default: TYPE_DEFAULTS[n.declareType] };
+        /* Aggiungi/aggiorna quelli nuovi */
+        for (const name of newNames) {
+          if (!state.varDefs[name]) {
+            state.varDefs[name] = { type: n.declareType, default: TYPE_DEFAULTS[n.declareType] };
+          } else {
+            state.varDefs[name].type = n.declareType;
+          }
+        }
         renderVars();
       }
       requestAnimationFrame(layoutAll); scheduleSave();
@@ -525,8 +562,6 @@ function buildLayout() {
   const plusPts = [];
   const infoCache = new Map();
 
-  /* Ritorna {left, right}: quanto il blocco si estende a sinistra/destra
-     rispetto alla sua "center line" (dove passano il flow verticale). */
   function subtreeInfo(items) {
     if (infoCache.has(items)) return infoCache.get(items);
     let left = 0, right = 0;
@@ -540,9 +575,7 @@ function buildLayout() {
         const fInfo = subtreeInfo(it.falseBranch);
         const tInfo = subtreeInfo(it.trueBranch);
         const minAB = MIN_HORIZ_LEN + sw * 0.485;
-        /* Vincolo non-sovrapposizione: A + B >= fR + tL + HGAP */
         const ABmin = Math.max(2 * minAB, fInfo.right + tInfo.left + HGAP);
-        /* Distribuzione bilanciata (senza sbilanciare il bbox) */
         let A = (ABmin + tInfo.right - fInfo.left) / 2;
         let B = ABmin - A;
         if (A < minAB) { A = minAB; B = ABmin - A; }
@@ -556,7 +589,6 @@ function buildLayout() {
         const bInfo = subtreeInfo(it.body);
         const minB = MIN_HORIZ_LEN + sw * 0.485;
         const B = minB;
-        /* Corpo a destra di B, back-edge a sinistra */
         const L = Math.max(sw / 2, BACK_EDGE_LEN, B - bInfo.left);
         const R = Math.max(sw / 2, B + bInfo.right);
         left = Math.max(left, L);
@@ -577,7 +609,6 @@ function buildLayout() {
     let lastId = null, lastCX = cx, lastBottomY = startY;
 
     for (const item of items) {
-      /* --- SEMPLICE --- */
       if (item.kind === 'simple') {
         const s = sizes.get(item.node.id);
         positions.set(item.node.id, { x: cx - s.w / 2, y, w: s.w, h: s.h });
@@ -594,7 +625,6 @@ function buildLayout() {
         continue;
       }
 
-      /* --- IF --- */
       if (item.kind === 'if') {
         const s = sizes.get(item.node.id);
         const ifX = cx - s.w / 2;
@@ -627,7 +657,6 @@ function buildLayout() {
         const falseCX = cx - A;
         const trueCX  = cx + B;
 
-        /* FALSE */
         let falseBottomY, falseLastId, falseLastBottomY;
         if (item.falseBranch.length > 0) {
           const first = firstNodeOf(item.falseBranch);
@@ -652,7 +681,6 @@ function buildLayout() {
           falseLastBottomY = falseBottomY;
         }
 
-        /* TRUE */
         let trueBottomY, trueLastId, trueLastBottomY;
         if (item.trueBranch.length > 0) {
           const first = firstNodeOf(item.trueBranch);
@@ -677,7 +705,6 @@ function buildLayout() {
           trueLastBottomY = trueBottomY;
         }
 
-        /* MERGE */
         const mergeY = Math.max(trueBottomY, falseBottomY, branchTopY) + MERGE_GAP;
         const mergeId = 'merge_' + item.node.id;
         merges.push({ id: mergeId, x: cx, y: mergeY });
@@ -729,7 +756,6 @@ function buildLayout() {
         continue;
       }
 
-      /* --- LOOP --- */
       if (item.kind === 'loop') {
         const s = sizes.get(item.node.id);
         const lX = cx - s.w / 2;
@@ -1220,8 +1246,16 @@ function deleteNode(id) {
     }
   }
   if (n.type === 'declare') {
-    const vn = (n.text || '').trim();
-    if (vn) { delete state.varDefs[vn]; delete state.variables[vn]; renderVars(); }
+    /* Rimuovi TUTTE le variabili dichiarate dal blocco */
+    const names = parseDeclareNames(n.text || '');
+    if (names.length === 0) {
+      /* fallback legacy: singolo nome scritto direttamente */
+      const vn = (n.text || '').trim();
+      if (vn) { delete state.varDefs[vn]; delete state.variables[vn]; }
+    } else {
+      for (const vn of names) { delete state.varDefs[vn]; delete state.variables[vn]; }
+    }
+    renderVars();
   }
   const idxNow = state.nodes.findIndex(x => x.id === id);
   if (idxNow !== -1) state.nodes.splice(idxNow, 1);
@@ -1393,13 +1427,22 @@ async function execSimple(node) {
     }
     case 'output': clog(evaluateOutput(text), 'out'); return 'ok';
     case 'declare': {
-      if (node.declareType && text && /^[a-zA-Z_]\w*$/.test(text)) {
-        const type = node.declareType, name = text;
-        const v = TYPE_DEFAULTS[type];
-        state.varDefs[name] = { type, default: v };
-        state.variables[name] = { value: v, type };
-        renderVars(); clog(type + ' ' + name, 'step'); return 'ok';
+      /* --- Multi-dichiarazione: "a, b, c" --- */
+      if (node.declareType && text) {
+        const names = parseDeclareNames(text);
+        if (names.length > 0) {
+          const type = node.declareType;
+          const v = TYPE_DEFAULTS[type];
+          for (const name of names) {
+            state.varDefs[name] = { type, default: v };
+            state.variables[name] = { value: v, type };
+          }
+          renderVars();
+          clog(type + ' ' + names.join(', '), 'step');
+          return 'ok';
+        }
       }
+      /* --- Legacy: array "Integer arr[10]" --- */
       const arrM = text.match(/^([a-zA-Z]+)\s+([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*$/);
       if (arrM && VALID_TYPE_RE.test(arrM[1])) {
         const type = canonicalType(arrM[1]);
@@ -1409,8 +1452,9 @@ async function execSimple(node) {
         state.variables[name] = { value: arr, type: type + '[]' };
         renderVars(); clog(type + ' ' + name + '[' + size + ']', 'step'); return 'ok';
       }
+      /* --- Legacy: "Integer a = 5" --- */
       const m = text.match(/^([a-zA-Z]+)\s+&?([a-zA-Z_]\w*)(?:\s*=\s*(.+))?$/);
-      if (!m || !VALID_TYPE_RE.test(m[1])) throw new Error('Dichiara: usa "Integer x = 5" oppure seleziona il tipo dal popup');
+      if (!m || !VALID_TYPE_RE.test(m[1])) throw new Error('Dichiara: usa "Integer a, b, c" oppure seleziona il tipo dal popup');
       const type = canonicalType(m[1]), name = m[2], expr = m[3];
       let v = expr !== undefined ? evaluate(expr) : TYPE_DEFAULTS[type];
       v = coerceValue(v, type);
@@ -1895,19 +1939,35 @@ function generateC() {
   lines.push('#include <stdio.h>'); lines.push('#include <string.h>'); lines.push('');
   lines.push('int main(void) {');
   const declared = {};
+
+  /* Dichiarazioni (multi-variabile + legacy) */
   state.nodes.forEach(n => {
     if (n.type !== 'declare') return;
     const t = (n.text || '').trim();
-    if (n.declareType && /^[a-zA-Z_]\w*$/.test(t)) {
-      if (!declared[t]) { lines.push('    ' + cTypeOf(n.declareType) + ' ' + t + ';'); declared[t] = true; }
+
+    /* Nuovo formato: tipo selezionato + "a, b, c" */
+    if (n.declareType) {
+      const names = parseDeclareNames(t);
+      const toDecl = names.filter(name => !declared[name]);
+      if (toDecl.length) {
+        lines.push('    ' + cTypeOf(n.declareType) + ' ' + toDecl.join(', ') + ';');
+        toDecl.forEach(name => { declared[name] = true; });
+      }
       return;
     }
+
+    /* Legacy array */
     const arrM = t.match(/^([a-zA-Z]+)\s+([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*$/);
     if (arrM && VALID_TYPE_RE.test(arrM[1])) {
       const ct = canonicalType(arrM[1]);
-      if (!declared[arrM[2]]) { lines.push('    ' + cTypeOf(ct) + ' ' + arrM[2] + '[' + arrM[3] + '];'); declared[arrM[2]] = true; }
+      if (!declared[arrM[2]]) {
+        lines.push('    ' + cTypeOf(ct) + ' ' + arrM[2] + '[' + arrM[3] + '];');
+        declared[arrM[2]] = true;
+      }
       return;
     }
+
+    /* Legacy tipizzato: "Integer a = 5" */
     const m = t.match(/^([a-zA-Z]+)\s+&?([a-zA-Z_]\w*)(?:\s*=\s*(.+))?$/);
     if (m && VALID_TYPE_RE.test(m[1]) && !declared[m[2]]) {
       const ct = cTypeOf(canonicalType(m[1]));
@@ -1917,6 +1977,8 @@ function generateC() {
       declared[name] = true;
     }
   });
+
+  /* Variabili del For non dichiarate esplicitamente */
   state.nodes.forEach(n => {
     if (n.type === 'for' && n.forData && n.forData.variable && !declared[n.forData.variable]) {
       lines.push('    int ' + n.forData.variable + ';');
@@ -1924,6 +1986,8 @@ function generateC() {
     }
   });
   if (Object.keys(declared).length) lines.push('');
+
+  /* Corpo */
   state.nodes.forEach(n => {
     if (['declare','start','end','else','endif','endloop'].includes(n.type)) return;
     const t = (n.text || '').trim();
@@ -2028,18 +2092,26 @@ function generatePython() {
     switch (n.type) {
       case 'comment': if (t) { lines.push('    # ' + t.replace(/^\/\//, '').trim()); hasContent = true; } break;
       case 'declare': {
-        if (n.declareType && /^[a-zA-Z_]\w*$/.test(t)) {
+        /* Nuovo formato multi: tipo selezionato + "a, b, c" */
+        if (n.declareType) {
+          const names = parseDeclareNames(t);
           let def = '0';
           if (n.declareType === 'String' || n.declareType === 'Character') def = '""';
           else if (n.declareType === 'Boolean') def = 'False';
-          lines.push('    ' + t + ' = ' + def); hasContent = true; return;
+          for (const name of names) {
+            lines.push('    ' + name + ' = ' + def);
+          }
+          if (names.length > 0) hasContent = true;
+          return;
         }
+        /* Legacy array */
         const arrM = t.match(/^([a-zA-Z]+)\s+([a-zA-Z_]\w*)\s*\[\s*(\d+)\s*\]\s*$/);
         if (arrM && VALID_TYPE_RE.test(arrM[1])) {
           const ct = canonicalType(arrM[1]);
           const def = (ct === 'Integer' || ct === 'Real') ? '0' : (ct === 'Boolean' ? 'False' : '""');
           lines.push('    ' + arrM[2] + ' = [' + def + '] * ' + arrM[3]); hasContent = true; return;
         }
+        /* Legacy tipizzato: "Integer a = 5" */
         const m = t.match(/^([a-zA-Z]+)\s+&?([a-zA-Z_]\w*)(?:\s*=\s*(.+))?$/);
         if (m && VALID_TYPE_RE.test(m[1])) {
           const ct = canonicalType(m[1]);
