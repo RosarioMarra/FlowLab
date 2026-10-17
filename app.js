@@ -359,12 +359,12 @@ function buildLayout(){
             if(first){
               const fSize=sizes.get(first.id);
               links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:bodyCX,y:anchorTopFor(first,loopY,fSize.h),id:first.id},type:'loop',corners:[{x:bodyCX,y:loopCY}],insertAt:item.bodyInsertAt});
-              plusPts.push({x:bodyCX,y:(loopCY+loopY)/2,insertAt:item.bodyInsertAt});
+              plusPts.push({x:(rightVX+bodyCX)/2, y:loopCY, insertAt:item.bodyInsertAt});
             }
             bodyEnd=layoutItems(item.body,bodyCX,loopY);
           } else {
             bodyEnd={bottomY:loopY+EMPTY_BRANCH_H,lastId:null,lastBottomY:loopY,lastCX:bodyCX,lastType:'loop'};
-            plusPts.push({x:bodyCX,y:loopCY,insertAt:item.bodyInsertAt});
+            // plusPts rimosso per evitare il doppione sul corpo vuoto
           }
 
           /* Loop-back: dal body (o dall'esagono se vuoto) → destra → su → pallino */
@@ -435,17 +435,15 @@ function buildLayout(){
           bodyEnd=layoutItems(item.body,bodyCX,bodyTopY);
         } else {
           bodyEnd={bottomY:bodyTopY+EMPTY_BRANCH_H,lastId:null,lastBottomY:bodyTopY+EMPTY_BRANCH_H,lastCX:bodyCX,lastType:'loop'};
-          plusPts.push({x:bodyCX,y:(loopBottom+EMPTY_BRANCH_H/2),insertAt:item.bodyInsertAt});
+          // plusPts rimosso per evitare il doppione sul corpo vuoto
           links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:bodyCX,y:bodyTopY+EMPTY_BRANCH_H/2,id:'emptybody_'+item.node.id},type:'loop',corners:[{x:bodyCX,y:loopCY}]});
         }
         const backY=Math.max(bodyEnd.bottomY,loopBottom)+LOOPBACK_GAP;
         if(bodyEnd.lastId){
           links.push({from:{x:bodyEnd.lastCX,y:bodyEnd.lastBottomY,id:bodyEnd.lastId},to:{x:repeatX,y:loopBottom,id:item.node.id},type:'loop',corners:[{x:bodyEnd.lastCX,y:backY},{x:repeatX,y:backY}],insertAt:item.endloopIndex});
-          plusPts.push({x:bodyEnd.lastCX,y:(bodyEnd.lastBottomY+backY)/2,insertAt:item.endloopIndex});
           plusPts.push({x:(bodyEnd.lastCX+repeatX)/2,y:backY,insertAt:item.endloopIndex});
         } else {
           links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:repeatX,y:loopBottom,id:item.node.id},type:'loop',corners:[{x:bodyCX,y:loopCY},{x:bodyCX,y:backY},{x:repeatX,y:backY}],insertAt:item.bodyInsertAt});
-          plusPts.push({x:bodyCX,y:(loopCY+backY)/2,insertAt:item.bodyInsertAt});
           plusPts.push({x:(bodyCX+repeatX)/2,y:backY,insertAt:item.bodyInsertAt});
         }
         labels.push({x:(rightVX+bodyCX)/2,y:loopCY-10,text:'Vero',type:'loop'});
