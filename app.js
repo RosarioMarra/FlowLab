@@ -1,9 +1,7 @@
-/* ============================================================
-   FlowLab v24 — LOOP v19 (Do-While corretto come da foto)
-   ============================================================ */
+/* app.js completo */
 'use strict';
 
-const APP = { name:'FlowLab', version:'24.0', storageKey:'flowlab.project.v24', maxSteps:5000, maxConsole:800 };
+const APP = { name:'FlowLab', version:'24.1', storageKey:'flowlab.project.v24', maxSteps:5000, maxConsole:800 };
 
 const DEFS = {
   start:   { label:'Start',    shape:'oval',          color:'#9370DB', fill:'#E8D5F5', editable:false, deletable:false, draggable:false },
@@ -32,8 +30,7 @@ const TYPE_KEYWORD_RE = /^(Integer|Real|String|Boolean|Character|Int|Float|Doubl
 const VGAP=26, HGAP=30, MIN_HORIZ_LEN=40, BACK_EDGE_LEN=30, EMPTY_BRANCH_H=20;
 const MERGE_GAP=44, LOOPBACK_GAP=40;
 const DW_MERGE_GAP=55;
-/* Distanza orizzontale del loop-back dal bordo destro dell'esagono */
-const DW_LOOPBACK_OFFSET=30;
+const DW_LOOPBACK_OFFSET=12;
 const MIN_NODE_W=180, MAX_NODE_W=2400, MIN_ZOOM=0.10, MAX_ZOOM=2.5;
 const FONT_LABEL="700 10px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 const FONT_SUBLABEL="700 10.5px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
@@ -92,10 +89,64 @@ async function clearHandleFromDB(key){try{const db=await openHandleDB();return n
 
 function normalizeType(t){if(!t)return null;const s=String(t).trim();return s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();}
 function canonicalType(t){const n=normalizeType(t);switch(n){case 'Int':case 'Integer':case 'Long':return 'Integer';case 'Float':case 'Double':case 'Real':case 'Num':return 'Real';case 'Str':case 'String':return 'String';case 'Bool':case 'Boolean':return 'Boolean';case 'Char':case 'Character':return 'Character';default:return n;}}
+
+/* Ancore forma */
 function anchorTopFor(node,y,h){const def=DEFS[node.type];if(!def)return y;switch(def.shape){case 'diamond':case 'hex':case 'parallelogram':return y+h*0.05;default:return y;}}
+function anchorBottomFor(node,y,h){const def=DEFS[node.type];if(!def)return y+h;switch(def.shape){case 'diamond':case 'hex':case 'parallelogram':return y+h*0.95;default:return y+h;}}
+function shapeSideX(node,x,w,side){
+  const def=DEFS[node.type];if(!def)return side==='left'?x:x+w;
+  switch(def.shape){
+    case 'parallelogram': return side==='left'? x+w*0.105 : x+w*0.895;
+    case 'hex': case 'diamond': return side==='left'? x+w*0.03 : x+w*0.97;
+    default: return side==='left'?x:x+w;
+  }
+}
+
 function formatForText(node){const d=node.forData;if(!d||!d.variable)return 'Configura...';const dir=d.direction==='dec'?'downto':'to';const stepNum=Number(d.step)||1;const stepText=stepNum!==1?` step ${stepNum}`:'';const s=d.start===''||d.start===undefined?'0':d.start;const e=d.end===''||d.end===undefined?'10':d.end;return `${d.variable} = ${s} ${dir} ${e}${stepText}`;}
 
-function measureNode(node){const def=DEFS[node.type];if(!def)return{w:MIN_NODE_W,h:60};const labelW=measureTextWidth(def.label.toUpperCase(),FONT_LABEL,LABEL_LS);const subW=node.declareType?measureTextWidth(node.declareType,FONT_SUBLABEL,'normal'):0;let contentW=0;if(node.type==='for')contentW=measureTextWidth(formatForText(node),FONT_CONTENT,'normal');else if(def.editable)contentW=measureTextWidth(node.text||def.ph||'',FONT_CONTENT,'normal');const padX=(SHAPE_PAD_X[def.shape]||22)+INPUT_PAD_X;const needed=Math.max(labelW,subW,contentW)+2*padX+WIDTH_SAFETY;let w=Math.max(MIN_NODE_W,needed+(node._extraW||0));w=Math.min(MAX_NODE_W,w);const extraH=node.declareType?14:0;let h=56+extraH;if(def.shape==='diamond')h=100;else if(def.shape==='oval')h=52;return{w:Math.ceil(w),h:Math.ceil(h)};}
+/* MISURA NODO */
+function measureNode(node){
+  const def=DEFS[node.type];if(!def)return{w:MIN_NODE_W,h:56};
+
+  if(node.type==='comment'){
+    const raw=(node.text!==undefined&&node.text!==null&&node.text!=='')?node.text:(def.ph||'');
+    const lines=String(raw).split('\n');
+    const innerMax=MAX_NODE_W-28;
+    let widest=40,wrapped=0;
+    for(const l of lines){
+      const lw=measureTextWidth(l,FONT_CONTENT,'normal');
+      widest=Math.max(widest,Math.min(lw,innerMax));
+    }
+    let w=Math.max(MIN_NODE_W,Math.min(MAX_NODE_W,widest+28+10));
+    const innerW=Math.max(40,w-28);
+    for(const l of lines){
+      const lw=measureTextWidth(l,FONT_CONTENT,'normal');
+      wrapped+=Math.max(1,Math.ceil((lw+2)/innerW));
+    }
+    const h=20+15+4+wrapped*18+10;
+    return {w:Math.ceil(w),h:Math.ceil(h)};
+  }
+
+  const labelW=measureTextWidth(def.label.toUpperCase(),FONT_LABEL,LABEL_LS);
+  const subW=(node.type==='declare'&&node.declareType)?measureTextWidth(node.declareType,FONT_SUBLABEL,'normal'):0;
+  let contentW=0;
+  if(node.type==='for')contentW=measureTextWidth(formatForText(node),FONT_CONTENT,'normal');
+  else if(def.editable)contentW=measureTextWidth(node.text||def.ph||'',FONT_CONTENT,'normal');
+  const padX=(SHAPE_PAD_X[def.shape]||22)+INPUT_PAD_X;
+  const needed=Math.max(labelW,subW,contentW)+2*padX+WIDTH_SAFETY;
+  let w=Math.max(MIN_NODE_W,needed+(node._extraW||0));
+  w=Math.min(MAX_NODE_W,w);
+
+  let padY=12;
+  if(['input','output','for','while','dowhile','break'].includes(node.type)) padY=14;
+  if(node.type==='if') padY=26;
+  const hasField=(node.type==='for')||!!def.editable;
+  const hasSub=(node.type==='declare'&&!!node.declareType);
+  let h=padY*2+15+(hasField?4+28:0)+(hasSub?4+15:0);
+  if(def.shape==='diamond')h=Math.max(h,100);
+  h=Math.max(56,h);
+  return {w:Math.ceil(w),h:Math.ceil(h)};
+}
 
 function valueLiteral(name){if(!(name in state.variables))throw new Error('Variabile "'+name+'" non definita');const v=state.variables[name].value;if(typeof v==='string')return JSON.stringify(v);if(typeof v==='boolean')return v?'true':'false';if(v===null||v===undefined)return 'null';if(typeof v==='number')return isFinite(v)?String(v):'0';return JSON.stringify(String(v));}
 function evaluate(src){
@@ -141,6 +192,22 @@ function createNodeEl(node,idx){
     display.addEventListener('mousedown',e=>e.stopPropagation());
     display.addEventListener('touchstart',e=>e.stopPropagation(),{passive:true});
     body.appendChild(display);
+  }else if(node.type==='comment'){
+    const ta=document.createElement('textarea');
+    ta.className='node-input node-comment';
+    ta.value=node.text||'';
+    ta.placeholder=def.ph||'';
+    ta.spellcheck=false;
+    ta.rows=2;
+    ta.addEventListener('input',()=>{
+      const n=state.nodes.find(x=>x.id===node.id);if(!n)return;
+      n.text=ta.value;n._extraW=0;
+      requestAnimationFrame(()=>{layoutAll();convergeLayout();});
+      scheduleSave();state.dirty=true;updateSaveIndicator();
+    });
+    ta.addEventListener('mousedown',e=>e.stopPropagation());
+    ta.addEventListener('touchstart',e=>e.stopPropagation(),{passive:true});
+    body.appendChild(ta);
   }else if(def.editable){
     const input=document.createElement('input');input.className='node-input';input.type='text';input.value=node.text||'';input.placeholder=def.ph||'';input.spellcheck=false;input.autocomplete='off';
     input.addEventListener('input',()=>{
@@ -167,17 +234,17 @@ function createNodeEl(node,idx){
     el.appendChild(del);
   }
   el.addEventListener('click',e=>{
-    if(e.target.tagName==='INPUT'||e.target.closest('.node-del')||e.target.closest('.node-sublabel')||e.target.classList.contains('for-display'))return;
+    if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.closest('.node-del')||e.target.closest('.node-sublabel')||e.target.classList.contains('for-display'))return;
     selectNode(node.id);
   });
   const isDraggable=def.draggable!==false;
   if(isDraggable){
     let dragMouse=null;
-    el.addEventListener('mousedown',e=>{if(e.target.tagName==='INPUT'||e.target.closest('.node-del'))return;e.stopPropagation();e.preventDefault();dragMouse={startClientX:e.clientX,startClientY:e.clientY,startWorldX:node.x,startWorldY:node.y};el.style.zIndex=100;});
+    el.addEventListener('mousedown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.closest('.node-del'))return;e.stopPropagation();e.preventDefault();dragMouse={startClientX:e.clientX,startClientY:e.clientY,startWorldX:node.x,startWorldY:node.y};el.style.zIndex=100;});
     document.addEventListener('mousemove',e=>{if(!dragMouse||!el.isConnected)return;const dx=(e.clientX-dragMouse.startClientX)/state.zoom;const dy=(e.clientY-dragMouse.startClientY)/state.zoom;const x=dragMouse.startWorldX+dx,y=dragMouse.startWorldY+dy;el.style.left=x+'px';el.style.top=y+'px';node.x=x;node.y=y;renderLinks(buildLayout());});
     document.addEventListener('mouseup',()=>{if(!dragMouse)return;dragMouse=null;el.style.zIndex='';scheduleSave();});
     let dragTouch=null;
-    el.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;if(e.target.tagName==='INPUT'||e.target.closest('.node-del'))return;e.stopPropagation();const t=e.touches[0];dragTouch={startClientX:t.clientX,startClientY:t.clientY,startWorldX:node.x,startWorldY:node.y};el.style.zIndex=100;},{passive:true});
+    el.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.closest('.node-del'))return;e.stopPropagation();const t=e.touches[0];dragTouch={startClientX:t.clientX,startClientY:t.clientY,startWorldX:node.x,startWorldY:node.y};el.style.zIndex=100;},{passive:true});
     el.addEventListener('touchmove',e=>{if(!dragTouch||e.touches.length!==1)return;e.preventDefault();const t=e.touches[0];const dx=(t.clientX-dragTouch.startClientX)/state.zoom;const dy=(t.clientY-dragTouch.startClientY)/state.zoom;const x=dragTouch.startWorldX+dx,y=dragTouch.startWorldY+dy;el.style.left=x+'px';el.style.top=y+'px';node.x=x;node.y=y;renderLinks(buildLayout());},{passive:false});
     el.addEventListener('touchend',()=>{if(!dragTouch)return;dragTouch=null;el.style.zIndex='';scheduleSave();});
   }
@@ -210,11 +277,11 @@ function parseBlock(nodes,start,end){
 function firstNodeOf(items){for(const it of items)if(it.node)return it.node;return null;}
 
 /* ============================================================
-   LAYOUT v19
+   LAYOUT
    ============================================================ */
 function buildLayout(){
   const sizes=new Map();
-  state.nodes.forEach(n=>{const s=measureNode(n);sizes.set(n.id,s);const el=nodesEl.querySelector('.node[data-id="'+n.id+'"]');if(el){el.style.width=s.w+'px';el.style.minHeight=s.h+'px';}});
+  state.nodes.forEach(n=>{const s=measureNode(n);sizes.set(n.id,s);const el=nodesEl.querySelector('.node[data-id="'+n.id+'"]');if(el){el.style.width=s.w+'px';el.style.height=s.h+'px';el.style.minHeight=s.h+'px';}});
   const positions=new Map();
   const links=[]; const merges=[]; const labels=[]; const plusPts=[];
   const infoCache=new Map();
@@ -237,11 +304,12 @@ function buildLayout(){
         const sw=sizes.get(it.node.id).w;
         const bInfo=subtreeInfo(it.body);
         if(it.node.type==='dowhile'){
-          /* Do-While: body a destra (stessa Y dell'esagono), loop-back ancora più a destra */
-          const bodyRightExtent = sw/2 + HGAP + bInfo.left + bInfo.right;
-          const loopBackRight = sw/2 + DW_LOOPBACK_OFFSET;
+          const hasBody=it.body.length>0;
+          const bodyRight = hasBody
+            ? sw/2 + HGAP + bInfo.left + bInfo.right + DW_LOOPBACK_OFFSET
+            : sw/2 + DW_LOOPBACK_OFFSET;
           left = Math.max(left, sw/2);
-          right = Math.max(right, sw/2, bodyRightExtent, loopBackRight);
+          right = Math.max(right, sw/2, bodyRight);
         } else {
           const minB=sw/2+HGAP+bInfo.left;
           const B=minB;
@@ -261,16 +329,19 @@ function buildLayout(){
   function layoutItems(items,cx,startY){
     let y=startY;
     let lastId=null,lastCX=cx,lastBottomY=startY,lastType='normal';
+    let lastIsLoopFalse = false;
 
     for(const item of items){
       if(item.kind==='simple'){
         const s=sizes.get(item.node.id);
         positions.set(item.node.id,{x:cx-s.w/2,y,w:s.w,h:s.h});
         if(lastId){
+          const midY = (lastBottomY + anchorTopFor(item.node,y,s.h)) / 2;
           links.push({from:{x:lastCX,y:lastBottomY,id:lastId},to:{x:cx,y:anchorTopFor(item.node,y,s.h),id:item.node.id},type:lastType||'normal',corners:[],insertAt:item.flatIndex});
-          plusPts.push({x:cx,y:(lastBottomY+y)/2,insertAt:item.flatIndex});
+          plusPts.push({x:cx, y:midY, insertAt:item.flatIndex});
         }
-        lastId=item.node.id;lastCX=cx;lastBottomY=y+s.h;lastType='normal';
+        lastId=item.node.id;lastCX=cx;lastBottomY=anchorBottomFor(item.node,y,s.h);lastType='normal';
+        lastIsLoopFalse = false;
         y+=s.h+VGAP;continue;
       }
 
@@ -279,8 +350,9 @@ function buildLayout(){
         const ifX=cx-s.w/2;
         positions.set(item.node.id,{x:ifX,y,w:s.w,h:s.h});
         if(lastId){
+          const midY = (lastBottomY + anchorTopFor(item.node,y,s.h)) / 2;
           links.push({from:{x:lastCX,y:lastBottomY,id:lastId},to:{x:cx,y:anchorTopFor(item.node,y,s.h),id:item.node.id},type:lastType||'normal',corners:[],insertAt:item.flatIndex});
-          plusPts.push({x:cx,y:(lastBottomY+y)/2,insertAt:item.flatIndex});
+          plusPts.push({x:cx, y:midY, insertAt:item.flatIndex});
         }
         const ifCY=y+s.h/2;
         const ifBottom=y+s.h;
@@ -298,27 +370,28 @@ function buildLayout(){
         let falseBottomY,falseLastId,falseLastBottomY;
         if(item.falseBranch.length>0){
           const first=firstNodeOf(item.falseBranch);
-          if(first){const firstSize=sizes.get(first.id);links.push({from:{x:leftVX,y:ifCY,id:item.node.id},to:{x:falseCX,y:anchorTopFor(first,branchTopY,firstSize.h),id:first.id},type:'false',corners:[{x:falseCX,y:ifCY}],insertAt:item.falseInsertAt});plusPts.push({x:falseCX,y:(ifCY+branchTopY)/2,insertAt:item.falseInsertAt});}
+          if(first){const firstSize=sizes.get(first.id);links.push({from:{x:leftVX,y:ifCY,id:item.node.id},to:{x:falseCX,y:anchorTopFor(first,branchTopY,firstSize.h),id:first.id},type:'false',corners:[{x:falseCX,y:ifCY}],insertAt:item.falseInsertAt});}
           const fEnd=layoutItems(item.falseBranch,falseCX,branchTopY);
           falseBottomY=fEnd.bottomY;falseLastId=fEnd.lastId;falseLastBottomY=fEnd.lastBottomY;
         } else {falseBottomY=branchTopY+EMPTY_BRANCH_H;falseLastId=null;falseLastBottomY=falseBottomY;}
         let trueBottomY,trueLastId,trueLastBottomY;
         if(item.trueBranch.length>0){
           const first=firstNodeOf(item.trueBranch);
-          if(first){const firstSize=sizes.get(first.id);links.push({from:{x:rightVX,y:ifCY,id:item.node.id},to:{x:trueCX,y:anchorTopFor(first,branchTopY,firstSize.h),id:first.id},type:'true',corners:[{x:trueCX,y:ifCY}],insertAt:item.trueInsertAt});plusPts.push({x:trueCX,y:(ifCY+branchTopY)/2,insertAt:item.trueInsertAt});}
+          if(first){const firstSize=sizes.get(first.id);links.push({from:{x:rightVX,y:ifCY,id:item.node.id},to:{x:trueCX,y:anchorTopFor(first,branchTopY,firstSize.h),id:first.id},type:'true',corners:[{x:trueCX,y:ifCY}],insertAt:item.trueInsertAt});plusPts.push({x:(rightVX+trueCX)/2,y:ifCY,insertAt:item.trueInsertAt});}
           const tEnd=layoutItems(item.trueBranch,trueCX,branchTopY);
           trueBottomY=tEnd.bottomY;trueLastId=tEnd.lastId;trueLastBottomY=tEnd.lastBottomY;
         } else {trueBottomY=branchTopY+EMPTY_BRANCH_H;trueLastId=null;trueLastBottomY=trueBottomY;}
         const mergeY=Math.max(trueBottomY,falseBottomY,branchTopY)+MERGE_GAP;
         const mergeId='merge_'+item.node.id;
         merges.push({id:mergeId,x:cx,y:mergeY});
-        if(falseLastId){links.push({from:{x:falseCX,y:falseLastBottomY,id:falseLastId},to:{x:cx,y:mergeY,id:mergeId,isMerge:true},type:'false',corners:[{x:falseCX,y:mergeY}],insertAt:item.falseEndInsertAt});plusPts.push({x:falseCX,y:(falseLastBottomY+mergeY)/2,insertAt:item.falseEndInsertAt});}
-        else {const falseMode=item.hasElse?null:'false-no-else';links.push({from:{x:leftVX,y:ifCY,id:item.node.id},to:{x:cx,y:mergeY,id:mergeId,isMerge:true},type:'false',corners:[{x:falseCX,y:ifCY},{x:falseCX,y:mergeY}],insertAt:item.falseInsertAt,insertMode:falseMode});plusPts.push({x:falseCX,y:(ifCY+mergeY)/2,insertAt:item.falseInsertAt,insertMode:falseMode});}
+        if(falseLastId){links.push({from:{x:falseCX,y:falseLastBottomY,id:falseLastId},to:{x:cx,y:mergeY,id:mergeId,isMerge:true},type:'false',corners:[{x:falseCX,y:mergeY}],insertAt:item.falseEndInsertAt});}
+        else {const falseMode=item.hasElse?null:'false-no-else';links.push({from:{x:leftVX,y:ifCY,id:item.node.id},to:{x:cx,y:mergeY,id:mergeId,isMerge:true},type:'false',corners:[{x:falseCX,y:ifCY},{x:falseCX,y:mergeY}],insertAt:item.falseInsertAt,insertMode:falseMode});}
         if(trueLastId){links.push({from:{x:trueCX,y:trueLastBottomY,id:trueLastId},to:{x:cx,y:mergeY,id:mergeId,isMerge:true},type:'true',corners:[{x:trueCX,y:mergeY}],insertAt:item.trueEndInsertAt});plusPts.push({x:trueCX,y:(trueLastBottomY+mergeY)/2,insertAt:item.trueEndInsertAt});}
         else {links.push({from:{x:rightVX,y:ifCY,id:item.node.id},to:{x:cx,y:mergeY,id:mergeId,isMerge:true},type:'true',corners:[{x:trueCX,y:ifCY},{x:trueCX,y:mergeY}],insertAt:item.trueInsertAt});plusPts.push({x:trueCX,y:(ifCY+mergeY)/2,insertAt:item.trueInsertAt});}
-        labels.push({x:(leftVX+falseCX)/2,y:ifCY-10,text:'Falso',type:'false'});
-        labels.push({x:(rightVX+trueCX)/2,y:ifCY-10,text:'Vero',type:'true'});
+        labels.push({x:(leftVX+falseCX)/2,y:ifCY-16,text:'Falso',type:'false'});
+        labels.push({x:(rightVX+trueCX)/2,y:ifCY-16,text:'Vero',type:'true'});
         lastId=mergeId;lastCX=cx;lastBottomY=mergeY+10;lastType='normal';
+        lastIsLoopFalse = false;
         y=mergeY+VGAP;continue;
       }
 
@@ -328,96 +401,92 @@ function buildLayout(){
         const isDoWhile=item.node.type==='dowhile';
         const lX=cx-s.w/2;
 
-        /* ---------- DO-WHILE (layout come da foto) ---------- */
+        /* ---------- DO-WHILE ---------- */
         if(isDoWhile){
-          const loopY = y + DW_MERGE_GAP;              /* esagono sotto il pallino */
-          const mergeId = 'merge_'+item.node.id;        /* pallino in alto */
+          const loopY = y + DW_MERGE_GAP;
+          const mergeId = 'merge_'+item.node.id;
           merges.push({id:mergeId, x:cx, y:y});
           positions.set(item.node.id,{x:lX,y:loopY,w:s.w,h:s.h});
 
-          /* Ingresso dal nodo precedente → pallino */
           if(lastId){
+            const midY = (lastBottomY + (y-8)) / 2;
             links.push({from:{x:lastCX,y:lastBottomY,id:lastId},to:{x:cx,y:y-8,id:mergeId,isMerge:true},type:lastType||'normal',corners:[]});
+            plusPts.push({x:cx, y:midY, insertAt:item.flatIndex});
           }
 
-          /* Pallino → esagono (freccia verticale, etichetta "Vero" a sinistra) */
           const hexTopY = anchorTopFor(item.node, loopY, s.h);
           links.push({from:{x:cx,y:y+8,id:mergeId,isMerge:true},to:{x:cx,y:hexTopY,id:item.node.id},type:'loop',corners:[]});
-          plusPts.push({x:cx,y:(y+hexTopY)/2,insertAt:item.flatIndex});
-          labels.push({x:cx-30,y:(y+hexTopY)/2,text:'Vero',type:'loop'});
 
           const loopCY=loopY+s.h/2;
-          const loopBottom=loopY+s.h;
-          const rightVX=lX+s.w;                         /* bordo destro esagono */
+          const loopBottom=anchorBottomFor(item.node, loopY, s.h);
+          const rightVX=lX+s.w*0.97;
 
-          /* Body a destra (stessa Y dell'esagono) */
           const bInfo=subtreeInfo(item.body);
           const bodyCX=cx + s.w/2 + HGAP + bInfo.left;
           let bodyEnd;
           if(item.body.length>0){
             const first=firstNodeOf(item.body);
-            if(first){
-              const fSize=sizes.get(first.id);
-              links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:bodyCX,y:anchorTopFor(first,loopY,fSize.h),id:first.id},type:'loop',corners:[{x:bodyCX,y:loopCY}],insertAt:item.bodyInsertAt});
-              plusPts.push({x:(rightVX+bodyCX)/2, y:loopCY, insertAt:item.bodyInsertAt});
-            }
-            bodyEnd=layoutItems(item.body,bodyCX,loopY);
+            const fSize=sizes.get(first.id);
+            const bodyStartY = loopY + (s.h - fSize.h)/2;
+            const firstLeftX = shapeSideX(first, bodyCX - fSize.w/2, fSize.w, 'left');
+            links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:firstLeftX,y:loopCY,id:first.id},type:'loop',corners:[],insertAt:item.bodyInsertAt});
+            plusPts.push({x:(rightVX+firstLeftX)/2, y:loopCY, insertAt:item.bodyInsertAt});
+            bodyEnd=layoutItems(item.body,bodyCX,bodyStartY);
           } else {
             bodyEnd={bottomY:loopY+EMPTY_BRANCH_H,lastId:null,lastBottomY:loopY,lastCX:bodyCX,lastType:'loop'};
-            // plusPts rimosso per evitare il doppione sul corpo vuoto
           }
 
-          /* Loop-back: dal body (o dall'esagono se vuoto) → destra → su → pallino */
           const loopBackX = (item.body.length > 0)
             ? Math.max(cx + s.w/2 + DW_LOOPBACK_OFFSET, bodyCX + bInfo.right + DW_LOOPBACK_OFFSET)
-            : cx + s.w/2 + DW_LOOPBACK_OFFSET;
+            : rightVX + MIN_HORIZ_LEN;
 
           if(bodyEnd.lastId){
+            const lastNode = state.nodes.find(n=>n.id===bodyEnd.lastId);
+            const lastSize = lastNode ? sizes.get(lastNode.id) : null;
+            const lastRightY = lastSize ? bodyEnd.lastBottomY - lastSize.h/2 : bodyEnd.lastBottomY;
+            const lastRightX = lastSize ? shapeSideX(lastNode, bodyEnd.lastCX - lastSize.w/2, lastSize.w, 'right') : bodyEnd.lastCX;
             links.push({
-              from:{x:bodyEnd.lastCX,y:bodyEnd.lastBottomY,id:bodyEnd.lastId},
+              from:{x:lastRightX, y:lastRightY, id:bodyEnd.lastId},
               to:{x:cx+8, y:y, id:mergeId, isMerge:true},
               type:'loop',
-              corners:[
-                {x:loopBackX, y:bodyEnd.lastBottomY},
-                {x:loopBackX, y:y}
-              ],
+              corners:[{x:loopBackX, y:lastRightY},{x:loopBackX, y:y}],
               insertAt:item.endloopIndex
             });
-            plusPts.push({x:loopBackX, y:(bodyEnd.lastBottomY+y)/2, insertAt:item.endloopIndex});
           } else {
-            /* Body vuoto: loop-back direttamente dall'esagono al pallino (come in foto) */
             links.push({
               from:{x:rightVX,y:loopCY,id:item.node.id},
               to:{x:cx+8, y:y, id:mergeId, isMerge:true},
               type:'loop',
-              corners:[
-                {x:loopBackX, y:loopCY},
-                {x:loopBackX, y:y}
-              ],
+              corners:[{x:loopBackX, y:loopCY},{x:loopBackX, y:y}],
               insertAt:item.endloopIndex
             });
-            plusPts.push({x:loopBackX, y:(loopCY+y)/2, insertAt:item.endloopIndex});
+            plusPts.push({x:(rightVX + loopBackX)/2, y:loopCY, insertAt:item.bodyInsertAt});
           }
 
-          /* Uscita "Falso" verso il nodo successivo */
+          labels.push({x:cx-28,y:loopBottom+12,text:'Falso',type:'false'});
+          labels.push({x:loopBackX-10, y:(loopCY+y)/2, text:'Ripeti', type:'loop'});
+          plusPts.push({x:cx, y:loopBottom + VGAP/2, insertAt:item.endloopIndex+1});
+
           lastId=item.node.id;
           lastCX=cx;
           lastBottomY=loopBottom;
           lastType='false';
-          labels.push({x:cx-30,y:loopBottom+14,text:'Falso',type:'false'});
-          y=loopBottom+VGAP;
+          lastIsLoopFalse = true;
+          y=Math.max(loopBottom, bodyEnd.bottomY) + VGAP;
           continue;
         }
 
-        /* ---------- WHILE / FOR (layout invariato) ---------- */
+        /* ---------- WHILE / FOR ---------- */
         const loopY = y;
         positions.set(item.node.id,{x:lX,y:loopY,w:s.w,h:s.h});
         if(lastId){
+          const midY = (lastBottomY + anchorTopFor(item.node,y,s.h)) / 2;
           links.push({from:{x:lastCX,y:lastBottomY,id:lastId},to:{x:cx,y:anchorTopFor(item.node,y,s.h),id:item.node.id},type:lastType||'normal',corners:[],insertAt:item.flatIndex});
-          plusPts.push({x:cx,y:(lastBottomY+y)/2,insertAt:item.flatIndex});
+          plusPts.push({x:cx, y:midY, insertAt:item.flatIndex});
         }
         const loopCY=loopY+s.h/2;
         const loopBottom=loopY+s.h;
+        const blockEdgeY=anchorBottomFor(item.node, loopY, s.h);
         const bodyTopY = loopBottom+VGAP;
         const rightVX=lX+s.w*0.97;
         const repeatX=lX+s.w*0.72;
@@ -427,37 +496,48 @@ function buildLayout(){
         let bodyEnd;
         if(item.body.length>0){
           const first=firstNodeOf(item.body);
-          if(first){
-            const fSize=sizes.get(first.id);
-            links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:bodyCX,y:anchorTopFor(first,bodyTopY,fSize.h),id:first.id},type:'loop',corners:[{x:bodyCX,y:loopCY}],insertAt:item.bodyInsertAt});
-            plusPts.push({x:bodyCX,y:(loopCY+bodyTopY)/2,insertAt:item.bodyInsertAt});
-          }
+          const fSize=sizes.get(first.id);
+          links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:bodyCX,y:anchorTopFor(first,bodyTopY,fSize.h),id:first.id},type:'loop',corners:[{x:bodyCX,y:loopCY}],insertAt:item.bodyInsertAt});
+          plusPts.push({x:(rightVX+bodyCX)/2, y:loopCY, insertAt:item.bodyInsertAt});
           bodyEnd=layoutItems(item.body,bodyCX,bodyTopY);
         } else {
           bodyEnd={bottomY:bodyTopY+EMPTY_BRANCH_H,lastId:null,lastBottomY:bodyTopY+EMPTY_BRANCH_H,lastCX:bodyCX,lastType:'loop'};
-          // plusPts rimosso per evitare il doppione sul corpo vuoto
-          links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:bodyCX,y:bodyTopY+EMPTY_BRANCH_H/2,id:'emptybody_'+item.node.id},type:'loop',corners:[{x:bodyCX,y:loopCY}]});
+          links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:bodyCX,y:bodyTopY+EMPTY_BRANCH_H/2,id:'emptybody_'+item.node.id},type:'loop',corners:[{x:bodyCX,y:loopCY}],noArrow:true});
+          plusPts.push({x:(rightVX+bodyCX)/2, y:loopCY, insertAt:item.bodyInsertAt});
         }
         const backY=Math.max(bodyEnd.bottomY,loopBottom)+LOOPBACK_GAP;
         if(bodyEnd.lastId){
-          links.push({from:{x:bodyEnd.lastCX,y:bodyEnd.lastBottomY,id:bodyEnd.lastId},to:{x:repeatX,y:loopBottom,id:item.node.id},type:'loop',corners:[{x:bodyEnd.lastCX,y:backY},{x:repeatX,y:backY}],insertAt:item.endloopIndex});
-          plusPts.push({x:(bodyEnd.lastCX+repeatX)/2,y:backY,insertAt:item.endloopIndex});
+          links.push({
+            from:{x:bodyEnd.lastCX,y:bodyEnd.lastBottomY,id:bodyEnd.lastId},
+            to:{x:repeatX,y:blockEdgeY,id:item.node.id},
+            type:'loop',
+            corners:[{x:bodyEnd.lastCX,y:backY},{x:repeatX,y:backY}],
+            insertAt:item.endloopIndex
+          });
         } else {
-          links.push({from:{x:rightVX,y:loopCY,id:item.node.id},to:{x:repeatX,y:loopBottom,id:item.node.id},type:'loop',corners:[{x:bodyCX,y:loopCY},{x:bodyCX,y:backY},{x:repeatX,y:backY}],insertAt:item.bodyInsertAt});
-          plusPts.push({x:(bodyCX+repeatX)/2,y:backY,insertAt:item.bodyInsertAt});
+          links.push({
+            from:{x:rightVX,y:loopCY,id:item.node.id},
+            to:{x:repeatX,y:blockEdgeY,id:item.node.id},
+            type:'loop',
+            corners:[{x:bodyCX,y:loopCY},{x:bodyCX,y:backY},{x:repeatX,y:backY}],
+            insertAt:item.bodyInsertAt
+          });
         }
-        labels.push({x:(rightVX+bodyCX)/2,y:loopCY-10,text:'Vero',type:'loop'});
-        labels.push({x:(bodyEnd.lastCX+repeatX)/2,y:backY+14,text:'Ripeti',type:'loop'});
-        labels.push({x:cx-24,y:loopBottom+14,text:'Falso',type:'false'});
+        labels.push({x:(rightVX+bodyCX)/2,y:loopCY-18,text:'Vero',type:'loop'});
+        labels.push({x:(bodyEnd.lastCX+repeatX)/2,y:backY+12,text:'Ripeti',type:'loop'});
+        labels.push({x:cx-24,y:loopBottom+12,text:'Falso',type:'false'});
+        plusPts.push({x:cx, y:blockEdgeY + VGAP/2, insertAt:item.endloopIndex+1});
         lastId=item.node.id;
         lastCX=cx;
-        lastBottomY=loopBottom;
+        lastBottomY=blockEdgeY;
         lastType='false';
+        lastIsLoopFalse = true;
         y=backY+VGAP;
         continue;
       }
     }
-    return {bottomY:lastBottomY,lastId,lastCX,lastBottomY,lastType};
+    const bottomY = lastId ? (y - VGAP) : startY;
+    return {bottomY,lastId,lastCX,lastBottomY,lastType};
   }
 
   layoutItems(tree,centerX,40);
@@ -524,6 +604,7 @@ function renderLinks(layout){
     return false;
   }
   layout.links.forEach(link=>{
+    if(link.noArrow) return;
     const {from,to,type,corners}=link;if(!from||!to)return;
     let lastPt=from;
     if(corners&&corners.length)lastPt=corners[corners.length-1];
@@ -582,9 +663,18 @@ function renderLinks(layout){
 
 function layoutAll(){
   const layout=buildLayout();
-  layout.positions.forEach((p,id)=>{const el=nodesEl.querySelector('.node[data-id="'+id+'"]');if(el){el.style.left=p.x+'px';el.style.top=p.y+'px';el.style.width=p.w+'px';el.style.minHeight=p.h+'px';}});
-  state.natW=Math.max(layout.maxX+100,200);
-  state.natH=Math.max(layout.maxY+100,200);
+  layout.positions.forEach((p,id)=>{
+    const el=nodesEl.querySelector('.node[data-id="'+id+'"]');
+    if(!el)return;
+    el.style.left=p.x+'px';el.style.top=p.y+'px';
+    el.style.width=p.w+'px';el.style.height=p.h+'px';el.style.minHeight=p.h+'px';
+    if(el.dataset.type==='comment'){
+      const ta=el.querySelector('textarea');
+      if(ta) ta.style.height=Math.max(24,p.h-39)+'px';
+    }
+  });
+  state.natW=Math.max(layout.maxX+200,200);
+  state.natH=Math.max(layout.maxY+200,200);
   state.contentMinX=layout.minX; state.contentMaxX=layout.maxX;
   state.contentMinY=0; state.contentMaxY=layout.maxY;
   canvasContentEl.style.width=state.natW+'px';
@@ -600,9 +690,10 @@ function convergeLayout(){
     if(myToken!==_convToken)return;
     let changed=false;
     state.nodes.forEach(n=>{
+      if(n.type==='comment')return;
       const el=nodesEl.querySelector('.node[data-id="'+n.id+'"]');if(!el)return;
       const inp=el.querySelector('.node-input');
-      if(!inp||inp.classList.contains('for-display'))return;
+      if(!inp||inp.classList.contains('for-display')||inp.tagName==='TEXTAREA')return;
       const over=inp.scrollWidth-inp.clientWidth;
       if(over>1){n._extraW=(n._extraW||0)+over+8;changed=true;}
     });
@@ -1312,6 +1403,7 @@ function exportPNG(){
   const drawnArrows=[];
   function alreadyDrawnArrow(x,y,ux,uy){for(const a of drawnArrows){const dx=Math.abs(a.x-x),dy=Math.abs(a.y-y);const du=Math.abs(a.ux-ux),dv=Math.abs(a.uy-uy);if(dx<15&&dy<15&&du<0.4&&dv<0.4)return true;}return false;}
   layout.links.forEach(link=>{
+    if(link.noArrow)return;
     const {from,to,type,corners}=link;if(!from||!to)return;
     let lastPt=from;
     if(corners&&corners.length)lastPt=corners[corners.length-1];
@@ -1372,8 +1464,27 @@ function exportPNG(){
     if(txt){
       ctx.fillStyle='#1f2937';
       ctx.font="500 12px ui-monospace, 'SF Mono', Consolas, monospace";
-      const offY=(n.type==='declare'&&n.declareType)?12:8;
-      ctx.fillText(txt,x+w/2+(n.type==='declare'?7:0),y+h/2+offY);
+      if(n.type==='comment'){
+        ctx.textAlign='left';
+        ctx.textBaseline='top';
+        const maxW=w-28;
+        const lines=[];
+        String(txt).split('\n').forEach(par=>{
+          let cur='';
+          par.split(' ').forEach(word=>{
+            const test=cur?cur+' '+word:word;
+            if(ctx.measureText(test).width>maxW&&cur){lines.push(cur);cur=word;}
+            else cur=test;
+          });
+          lines.push(cur);
+        });
+        lines.forEach((ln,i)=>ctx.fillText(ln,x+14,y+26+i*18));
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+      } else {
+        const offY=(n.type==='declare'&&n.declareType)?12:8;
+        ctx.fillText(txt,x+w/2+(n.type==='declare'?7:0),y+h/2+offY);
+      }
     }
   });
   ctx.restore();
