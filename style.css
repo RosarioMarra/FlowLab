@@ -596,10 +596,11 @@ input, select, textarea { font-family: inherit; }
 .node.error .node-box { box-shadow: 0 0 0 3px rgba(220,38,38,.45); }
 .node.error .node-shape polygon { stroke-width: 4; }
 
+/* X di eliminazione: più piccola */
 .node-del {
   position: absolute;
-  top: -10px; right: -10px;
-  width: 24px; height: 24px;
+  top: -8px; right: -8px;
+  width: 20px; height: 20px;
   background: #fff;
   border: 2px solid #dc2626;
   color: #dc2626;
@@ -610,10 +611,19 @@ input, select, textarea { font-family: inherit; }
   cursor: pointer;
   padding: 0;
 }
-.node-del .ico { width: 12px; height: 12px; }
+.node-del .ico { width: 10px; height: 10px; }
 .node:hover .node-del { opacity: 1; }
 .node-del:hover { background: #dc2626; color: #fff; }
 @media (hover: none) { .node-del { opacity: 1; } }
+
+/* X sui cicli (esagono): sul bordo, così è più compatta */
+.node[data-type="for"] .node-del,
+.node[data-type="while"] .node-del,
+.node[data-type="dowhile"] .node-del,
+.node[data-type="break"] .node-del {
+  top: 2px;
+  right: 15%;
+}
 
 .plus-area {
   position: absolute;

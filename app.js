@@ -65,6 +65,88 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const clone = o => JSON.parse(JSON.stringify(o));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+/* STATO GLOBALE DRAG */
+let activeDrag = null;
+function finishDrag(){
+  if(!activeDrag) return;
+  const { el, isDragging } = activeDrag;
+  if(isDragging && el){
+    el.style.zIndex = '';
+    el.dataset.wasDragging = 'true';
+    setTimeout(()=>{ if(el) el.dataset.wasDragging = 'false'; }, 50);
+    scheduleSave();
+  }
+  activeDrag = null;
+}
+
+document.addEventListener('mousemove', e => {
+  if(!activeDrag || activeDrag.isTouch) return;
+  if(!activeDrag.el || !activeDrag.el.isConnected){ finishDrag(); return; }
+  if((e.buttons & 1) === 0){ finishDrag(); return; }
+  const threshold = 10;
+  if(!activeDrag.isDragging){
+    const dx = Math.abs(e.clientX - activeDrag.startClientX);
+    const dy = Math.abs(e.clientY - activeDrag.startClientY);
+    if(dx > threshold || dy > threshold){
+      activeDrag.isDragging = true;
+      activeDrag.el.style.zIndex = 100;
+    }
+  }
+  if(activeDrag.isDragging){
+    const dx = (e.clientX - activeDrag.startClientX) / state.zoom;
+    const dy = (e.clientY - activeDrag.startClientY) / state.zoom;
+    const x = activeDrag.startWorldX + dx;
+    const y = activeDrag.startWorldY + dy;
+    activeDrag.el.style.left = x + 'px';
+    activeDrag.el.style.top = y + 'px';
+    activeDrag.node.x = x;
+    activeDrag.node.y = y;
+    renderLinks(buildLayout());
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if(activeDrag && !activeDrag.isTouch) finishDrag();
+});
+
+document.addEventListener('touchmove', e => {
+  if(!activeDrag || !activeDrag.isTouch) return;
+  if(!activeDrag.el || !activeDrag.el.isConnected){ finishDrag(); return; }
+  if(e.touches.length === 0){ finishDrag(); return; }
+  if(e.touches.length !== 1) return;
+  const t = e.touches[0];
+  const threshold = 12;
+  if(!activeDrag.isDragging){
+    const dx = Math.abs(t.clientX - activeDrag.startClientX);
+    const dy = Math.abs(t.clientY - activeDrag.startClientY);
+    if(dx > threshold || dy > threshold){
+      activeDrag.isDragging = true;
+      activeDrag.el.style.zIndex = 100;
+    }
+  }
+  if(activeDrag.isDragging){
+    e.preventDefault();
+    const dx = (t.clientX - activeDrag.startClientX) / state.zoom;
+    const dy = (t.clientY - activeDrag.startClientY) / state.zoom;
+    const x = activeDrag.startWorldX + dx;
+    const y = activeDrag.startWorldY + dy;
+    activeDrag.el.style.left = x + 'px';
+    activeDrag.el.style.top = y + 'px';
+    activeDrag.node.x = x;
+    activeDrag.node.y = y;
+    renderLinks(buildLayout());
+  }
+}, {passive: false});
+
+document.addEventListener('touchend', () => {
+  if(activeDrag && activeDrag.isTouch) finishDrag();
+});
+document.addEventListener('touchcancel', () => {
+  if(activeDrag && activeDrag.isTouch) finishDrag();
+});
+window.addEventListener('blur', () => { if(activeDrag) finishDrag(); });
+
+/* Utility e UI */
 let toastTimer=null;
 function toast(msg,ms=2000){toastEl.textContent=msg;toastEl.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{toastEl.hidden=true;},ms);}
 function haptic(){if(navigator.vibrate){try{navigator.vibrate(8);}catch(e){}}}
@@ -240,92 +322,37 @@ function createNodeEl(node,idx){
   });
   const isDraggable=def.draggable!==false;
   if(isDraggable){
-    let dragMouse=null, isDragging=false, dragStartClientX=0, dragStartClientY=0;
-    el.addEventListener('mousedown',e=>{
-      if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.closest('.node-del')||e.target.classList.contains('for-display')||e.target.closest('.node-sublabel'))return;
+    el.addEventListener('mousedown', e => {
+      if(e.button !== 0) return;
+      if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || 
+         e.target.closest('.node-del') || e.target.classList.contains('for-display') || 
+         e.target.closest('.node-sublabel')) return;
+      if(activeDrag) finishDrag();
       e.stopPropagation();
-      dragStartClientX=e.clientX;
-      dragStartClientY=e.clientY;
-      dragMouse={startWorldX:node.x,startWorldY:node.y,startClientX:e.clientX,startClientY:e.clientY};
-      isDragging=false;
-      el.dataset.wasDragging='false';
+      activeDrag = {
+        el, node,
+        startWorldX: node.x, startWorldY: node.y,
+        startClientX: e.clientX, startClientY: e.clientY,
+        isDragging: false, isTouch: false
+      };
+      el.dataset.wasDragging = 'false';
     });
-    document.addEventListener('mousemove',e=>{
-      if(!dragMouse||!el.isConnected)return;
-      if(!isDragging){
-        const dx=Math.abs(e.clientX-dragStartClientX);
-        const dy=Math.abs(e.clientY-dragStartClientY);
-        if(dx>5||dy>5){
-          isDragging=true;
-          el.style.zIndex=100;
-        }
-      }
-      if(isDragging){
-        e.preventDefault();
-        const dx=(e.clientX-dragMouse.startClientX)/state.zoom;
-        const dy=(e.clientY-dragMouse.startClientY)/state.zoom;
-        const x=dragMouse.startWorldX+dx;
-        const y=dragMouse.startWorldY+dy;
-        el.style.left=x+'px';el.style.top=y+'px';
-        node.x=x;node.y=y;renderLinks(buildLayout());
-      }
-    });
-    document.addEventListener('mouseup',()=>{
-      if(!dragMouse)return;
-      if(isDragging){
-        el.style.zIndex='';
-        scheduleSave();
-        el.dataset.wasDragging='true';
-        setTimeout(()=>{el.dataset.wasDragging='false';},50);
-      }
-      dragMouse=null;
-      isDragging=false;
-    });
-    
-    let dragTouch=null, isTouching=false, touchStartClientX=0, touchStartClientY=0;
-    el.addEventListener('touchstart',e=>{
-      if(e.touches.length!==1)return;
-      if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.closest('.node-del')||e.target.classList.contains('for-display')||e.target.closest('.node-sublabel'))return;
+    el.addEventListener('touchstart', e => {
+      if(e.touches.length !== 1) return;
+      if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || 
+         e.target.closest('.node-del') || e.target.classList.contains('for-display') || 
+         e.target.closest('.node-sublabel')) return;
+      if(activeDrag) finishDrag();
       e.stopPropagation();
-      const t=e.touches[0];
-      touchStartClientX=t.clientX;
-      touchStartClientY=t.clientY;
-      dragTouch={startWorldX:node.x,startWorldY:node.y,startClientX:t.clientX,startClientY:t.clientY};
-      isTouching=false;
-      el.dataset.wasDragging='false';
-    },{passive:true});
-    el.addEventListener('touchmove',e=>{
-      if(!dragTouch||e.touches.length!==1)return;
-      if(!isTouching){
-        const dx=Math.abs(e.touches[0].clientX-touchStartClientX);
-        const dy=Math.abs(e.touches[0].clientY-touchStartClientY);
-        if(dx>5||dy>5){
-          isTouching=true;
-          el.style.zIndex=100;
-        }
-      }
-      if(isTouching){
-        e.preventDefault();
-        const t=e.touches[0];
-        const dx=(t.clientX-dragTouch.startClientX)/state.zoom;
-        const dy=(t.clientY-dragTouch.startClientY)/state.zoom;
-        const x=dragTouch.startWorldX+dx;
-        const y=dragTouch.startWorldY+dy;
-        el.style.left=x+'px';el.style.top=y+'px';
-        node.x=x;node.y=y;renderLinks(buildLayout());
-      }
-    },{passive:false});
-    el.addEventListener('touchend',()=>{
-      if(!dragTouch)return;
-      if(isTouching){
-        el.style.zIndex='';
-        scheduleSave();
-        el.dataset.wasDragging='true';
-        setTimeout(()=>{el.dataset.wasDragging='false';},50);
-      }
-      dragTouch=null;
-      isTouching=false;
-    });
+      const t = e.touches[0];
+      activeDrag = {
+        el, node,
+        startWorldX: node.x, startWorldY: node.y,
+        startClientX: t.clientX, startClientY: t.clientY,
+        isDragging: false, isTouch: true
+      };
+      el.dataset.wasDragging = 'false';
+    }, {passive: true});
   }
   return el;
 }
@@ -355,9 +382,7 @@ function parseBlock(nodes,start,end){
 }
 function firstNodeOf(items){for(const it of items)if(it.node)return it.node;return null;}
 
-/* ============================================================
-   LAYOUT
-   ============================================================ */
+/* LAYOUT */
 function buildLayout(){
   const sizes=new Map();
   state.nodes.forEach(n=>{const s=measureNode(n);sizes.set(n.id,s);const el=nodesEl.querySelector('.node[data-id="'+n.id+'"]');if(el){el.style.width=s.w+'px';el.style.height=s.h+'px';el.style.minHeight=s.h+'px';}});
@@ -467,12 +492,12 @@ function buildLayout(){
         else {
             const falseMode=item.hasElse?null:'false-no-else';
             links.push({from:{x:leftVX,y:ifCY,id:item.node.id},to:{x:cx,y:mergeY,id:mergeId,isMerge:true},type:'false',corners:[{x:falseCX,y:ifCY},{x:falseCX,y:mergeY}],insertAt:item.falseInsertAt,insertMode:falseMode});
-            plusPts.push({x:falseCX,y:(ifCY+mergeY)/2,insertAt:item.falseInsertAt}); // FIX: aggiunto + per ramo falso vuoto
+            plusPts.push({x:falseCX,y:(ifCY+mergeY)/2,insertAt:item.falseInsertAt,insertMode:falseMode});
         }
         if(trueLastId){links.push({from:{x:trueCX,y:trueLastBottomY,id:trueLastId},to:{x:cx,y:mergeY,id:mergeId,isMerge:true},type:'true',corners:[{x:trueCX,y:mergeY}],insertAt:item.trueEndInsertAt});}
         else {
             links.push({from:{x:rightVX,y:ifCY,id:item.node.id},to:{x:cx,y:mergeY,id:mergeId,isMerge:true},type:'true',corners:[{x:trueCX,y:ifCY},{x:trueCX,y:mergeY}],insertAt:item.trueInsertAt});
-            plusPts.push({x:trueCX,y:(ifCY+mergeY)/2,insertAt:item.trueInsertAt}); // FIX: aggiunto + per ramo vero vuoto
+            plusPts.push({x:trueCX,y:(ifCY+mergeY)/2,insertAt:item.trueInsertAt});
         }
         labels.push({x:(leftVX+falseCX)/2,y:ifCY-16,text:'Falso',type:'false'});
         labels.push({x:(rightVX+trueCX)/2,y:ifCY-16,text:'Vero',type:'true'});
@@ -481,13 +506,13 @@ function buildLayout(){
         y=mergeY+VGAP;continue;
       }
 
-      /* =============== LOOP =============== */
+      /* LOOP */
       if(item.kind==='loop'){
         const s=sizes.get(item.node.id);
         const isDoWhile=item.node.type==='dowhile';
         const lX=cx-s.w/2;
 
-        /* ---------- DO-WHILE ---------- */
+        /* DO-WHILE */
         if(isDoWhile){
           const loopY = y + DW_MERGE_GAP;
           const mergeId = 'merge_'+item.node.id;
@@ -551,7 +576,8 @@ function buildLayout(){
           }
 
           labels.push({x:cx-28,y:loopBottom+12,text:'Falso',type:'false'});
-          labels.push({x:loopBackX-10, y:(loopCY+y)/2 + 18, text:'Ripeti', type:'loop'});
+          /* MODIFICA: etichetta "Ripeti" spostata a destra del loopback, fuori dal "+" */
+          labels.push({x:loopBackX + 50, y:(loopCY+y)/2, text:'Ripeti', type:'loop'});
 
           lastId=item.node.id;
           lastCX=cx;
@@ -562,7 +588,7 @@ function buildLayout(){
           continue;
         }
 
-        /* ---------- WHILE / FOR ---------- */
+        /* WHILE / FOR */
         const loopY = y;
         positions.set(item.node.id,{x:lX,y:loopY,w:s.w,h:s.h});
         if(lastId){
@@ -611,7 +637,8 @@ function buildLayout(){
           plusPts.push({x:bodyCX, y:(loopCY + backY)/2, insertAt:item.endloopIndex});
         }
         labels.push({x:(rightVX+bodyCX)/2,y:loopCY-32,text:'Vero',type:'loop'});
-        labels.push({x:(bodyEnd.lastCX+repeatX)/2,y:backY+12,text:'Ripeti',type:'loop'});
+        /* MODIFICA: etichetta "Ripeti" spostata a destra, fuori dal "+" */
+        labels.push({x:bodyEnd.lastCX + 55,y:backY+6,text:'Ripeti',type:'loop'});
         labels.push({x:cx-24,y:loopBottom+12,text:'Falso',type:'false'});
         lastId=item.node.id;
         lastCX=cx;
@@ -836,10 +863,7 @@ function zoomToCenter(newZ){zoomTo(newZ,canvasEl.clientWidth/2,canvasEl.clientHe
 
 let mousePanState=null;
 canvasEl.addEventListener('mousedown',(e)=>{
-  const isMiddle=e.button===1;
-  const isEmpty=!e.target.closest('.node, .plus, .connector, .node-del, .node-sublabel, .for-display');
-  const isLeft=e.button===0;
-  if(!isMiddle&&!(isLeft&&isEmpty))return;
+  if(e.button!==1 && !(e.button===0 && !e.target.closest('.node, .plus, .connector, .node-del, .node-sublabel, .for-display')))return;
   e.preventDefault();
   mousePanState={startClientX:e.clientX,startClientY:e.clientY,startPanX:state.panX,startPanY:state.panY};
   canvasEl.classList.add('panning');
