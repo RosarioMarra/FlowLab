@@ -5,7 +5,7 @@
      subito quando c'è connessione
    ============================================================ */
 
-const VERSION = 'flowlab-v25.2';
+const VERSION = 'flowlab-v25.3';
 
 const ASSETS = [
   './',

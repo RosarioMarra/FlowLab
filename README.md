@@ -59,7 +59,7 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 - **Copia / incolla / duplica** (Ctrl+C, Ctrl+V, Ctrl+D) e menu contestuale con il tasto destro
 - **Validazione in tempo reale**: le espressioni con errori di sintassi vengono sottolineate prima dell'esecuzione
 - **Zoom** con rotellina, pulsanti o pinch; **pan** con trascinamento sul vuoto
-- **Tema chiaro e scuro** (segue il sistema, commutabile)
+- **Tema chiaro** di default, con **tema scuro** attivabile (la scelta viene ricordata)
 
 ### Sintassi identica a Flowgorithm
 - Operatori `=`/`==`, `<>`/`!=`, `and`/`&&`, `or`/`||`, `not`/`!`, `mod`/`%`, `^` (potenza), `&` (concatenazione)

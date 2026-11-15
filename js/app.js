@@ -1690,8 +1690,7 @@ $('exGrid').addEventListener('click', async e => {
    ============================================================ */
 function currentTheme(){
   const a = document.documentElement.getAttribute('data-theme');
-  if(a) return a;
-  return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return a || 'light';
 }
 function toggleTheme(){
   const t = currentTheme() === 'dark' ? 'light' : 'dark';
