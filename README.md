@@ -4,7 +4,7 @@
 
 # FlowLab
 
-**Editor visuale di flowchart con esecuzione in tempo reale, variabili tipizzate, generazione di codice C e Python.**
+**Editor visuale di flowchart con la sintassi di Flowgorithm: esecuzione passo-passo, funzioni, array, grafici e generazione di codice in 7 linguaggi.**
 
 Un ambiente di programmazione visuale ispirato a Flowgorithm, completamente riscritto in tecnologie web moderne.
 
@@ -26,9 +26,7 @@ Un ambiente di programmazione visuale ispirato a Flowgorithm, completamente risc
 - [Installazione](#installazione)
 - [Come si usa](#come-si-usa)
 - [Sintassi del linguaggio](#sintassi-del-linguaggio)
-- [Blocchi disponibili](#blocchi-disponibili)
 - [Formato file `.fl`](#formato-file-fl)
-- [Generazione di codice](#generazione-di-codice)
 - [Struttura del progetto](#struttura-del-progetto)
 - [Architettura tecnica](#architettura-tecnica)
 - [Compatibilità](#compatibilità)
@@ -55,71 +53,52 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 ## Funzionalità
 
 ### Editor visuale
-- **Drag & drop** fluido dei blocchi sul canvas
-- **Layout automatico verticale** con collegamenti ortogonali (angoli a 90°)
-- **Forme elementari** per ogni tipo di blocco: ovale, rettangolo, rombo, parallelogramma, esagono
-- **Colori distintivi** per categoria (Flowgorithm-style)
-- **Auto-sizing**: i blocchi si adattano al contenuto
-- **Zoom centrato** con pulsanti `+`/`−` e pinch-to-zoom a due dita su mobile
-- **Indentazione visiva** per rami e cicli
+- **Layout automatico** in stile Flowgorithm con collegamenti ortogonali, rami Vero/Falso colorati e cerchi di unione
+- **Pulsanti `+`** su ogni collegamento per inserire blocchi nel punto esatto
+- **Trascinamento**: trascina un blocco (con tutto il suo contenuto) su un `+` per spostarlo; trascina un blocco dalla palette direttamente nel diagramma
+- **Copia / incolla / duplica** (Ctrl+C, Ctrl+V, Ctrl+D) e menu contestuale con il tasto destro
+- **Validazione in tempo reale**: le espressioni con errori di sintassi vengono sottolineate prima dell'esecuzione
+- **Zoom** con rotellina, pulsanti o pinch; **pan** con trascinamento sul vuoto
+- **Tema chiaro e scuro** (segue il sistema, commutabile)
 
-### Blocchi supportati
-- `Start` / `End` — Inizio e fine (obbligatori, non eliminabili)
-- `Dichiarazione` — Con popup di scelta tipo (Integer, Real, String, Boolean, Character)
-- `Input` / `Output` — Interazione con l'utente
-- `Assegna` — Assegnazione di variabili
-- `If` — Selezione singola/doppia con rami Vero/Falso
-- `For` / `While` / `Do-While` — Cicli con popup di configurazione
-- `Break` — Interruzione ciclo
-- `Commento` — Annotazioni
+### Sintassi identica a Flowgorithm
+- Operatori `=`/`==`, `<>`/`!=`, `and`/`&&`, `or`/`||`, `not`/`!`, `mod`/`%`, `^` (potenza), `&` (concatenazione)
+- Stessa precedenza degli operatori, parole chiave non sensibili alle maiuscole
+- Funzioni intrinseche di Flowgorithm: `Abs`, `Arccos`, `Arcsin`, `Arctan`, `Char`, `Cos`, `Int`, `Len`, `Log`, `Log10`, `Mid`, `Pi`, `Random`, `Sgn`, `Sin`, `Size`, `Sqrt`, `Tan`, `ToChar`, `ToCode`, `ToFixed`, `ToInteger`, `ToReal`, `ToString`
+- Variabili da **dichiarare** con il blocco Declare, controlli di tipo, errore se si legge una variabile senza valore
+- **Array** (`voti[10]`, indici da 0, `Size(v)`), passati per riferimento alle funzioni
+- **Funzioni definite dall'utente** con parametri, tipo restituito, variabile di ritorno e **ricorsione**
+- **Import / export `.fprg`**: apri i file di Flowgorithm e riesporta i tuoi progetti per Flowgorithm
 
-### Rami e cicli
-- **Rami Vero/Falso** con colori distintivi (verde/rosso)
-- **Auto-creazione del ramo Else** quando serve
-- **Merge automatico** al termine di ogni ramo
-- **Loop-back** visivamente collegato al vertice del blocco ciclo
-- **Pulsanti `+`** su ogni collegamento per inserire nuovi blocchi
+### Blocchi
+`Declare` · `Assign` · `Input` · `Output` (con opzione “a capo”) · `If` · `While` · `For` · `Do` · `Call` · `Commento` · `Break` (estensione)
 
-### Variabili e tipi
-- 5 tipi di dato: `Integer`, `Real`, `String`, `Boolean`, `Character`
-- Pannello variabili con valori in tempo reale durante l'esecuzione
-- Coercizione automatica dei tipi
-- Rinomina automatica quando cambi il nome nel blocco `Dichiarazione`
+### Esecuzione e debug
+- **Esegui / Pausa / Continua**, **Passo** (F10) che segue davvero il flusso del programma, **Stop**
+- **6 velocità**, da Lenta a **Istantanea** (fino a milioni di passi)
+- **Breakpoint** sui blocchi (F9): l'esecuzione si ferma e puoi proseguire passo-passo
+- **Pannello Variabili** con lo **stack delle chiamate** (vedi ogni livello della ricorsione) e il contenuto degli array
+- **Mappa di calore**: mostra quante volte è stato eseguito ogni blocco
+- **Errori chiari** in italiano, con il blocco colpevole evidenziato
+- Input direttamente nella console, con validazione del tipo
 
-### Esecuzione
-- **Esegui tutto** con velocità regolabile (5 livelli: da Lenta a Turbo)
-- **Passo passo** per il debug
-- **Stop** per interrompere
-- **Highlight del blocco corrente** con scroll automatico
-- **Console integrata** stile chat con input/output colorati
-- **Validazione** di variabili non definite, sintassi errata, indici fuori range
-
-### Salvataggio e persistenza
-- **Auto-salvataggio** su `localStorage` ad ogni modifica
-- **Salva/Apri file `.fl`** con File System Access API (salva direttamente, senza riaprire il selettore la seconda volta)
-- **Esporta PNG** dell'area di lavoro
-- **Import/Export JSON** del progetto
-- **Indicatore "modifiche non salvate"** con pallino rosso
+### Grafici e disegno
+- **Andamento delle variabili** numeriche nel tempo (grafico a linee, serie attivabili)
+- **Array come barre animate** in tempo reale (perfetto per gli algoritmi di ordinamento)
+- **Plot**: `Plot(x, y)`, `PlotBar(etichetta, valore)` per disegnare grafici di funzioni e istogrammi
+- **Canvas di disegno 400×400**: `DrawLine`, `DrawRect`, `FillRect`, `DrawCircle`, `FillCircle`, `DrawText`, `SetColor`…
+- **Grafica a tartaruga**: `Forward`, `Back`, `TurnLeft`, `TurnRight`, `PenUp`, `PenDown`, `Home`
+- Esportazione del disegno in PNG
 
 ### Generazione di codice
-- **Codice C** completo con `#include`, `scanf`, `printf`, tipi corretti
-- **Codice Python 3** con `input()`, `print()`, `range()`, gestione tipi
-- Pulsante **Copia** e **Scarica** per ogni linguaggio
+**Python**, **C**, **C++**, **Java**, **C#**, **JavaScript** e **pseudocodice** in italiano, con indentazione corretta, funzioni, array, cicli Do e conversioni di tipo. Evidenziazione della sintassi, copia e download.
 
-### PWA e mobile
-- **Installabile** su Android, iOS, Windows, macOS, Linux
-- **Funziona offline** dopo il primo caricamento (Service Worker)
-- **Responsive** completo: adattamento automatico da desktop a smartphone
-- **Menu mobile** con tutte le azioni raggruppate
-- **Pannelli drawer** (Blocchi e Console) esclusivi su mobile
-- **Touch-friendly**: pulsanti ≥ 40px, gesture pinch-zoom
-
-### Extra
-- **Undo/Redo** con storia di 60 stati
-- **Scorciatoie da tastiera** (Ctrl+S, Ctrl+Z, Ctrl+Y, Ctrl+N, Ctrl+Enter, F10)
-- **Modalità schermo intero**
-- **Tema scuro** con accenti neon
-- **Nessuna dipendenza esterna** — tutto vanilla JS
+### File, PWA e mobile
+- Salvataggio diretto su file `.fl` (File System Access API) e salvataggio automatico locale
+- Conversione automatica dei progetti delle versioni precedenti
+- Esportazione del diagramma in **PNG**
+- **15 esempi pronti** (base, intermedi, avanzati e grafici)
+- PWA installabile e **offline**, interfaccia completa anche su smartphone
 
 ---
 
@@ -182,225 +161,127 @@ npx serve
 
 ## Come si usa
 
-### 1. Crea il tuo primo flowchart
+1. All'avvio trovi un esempio pronto: premi **▶ Esegui**
+2. Clicca su un **`+`** del diagramma (o su un blocco della palette) per aggiungere blocchi
+3. Scrivi il contenuto direttamente nel blocco, con la sintassi di Flowgorithm
+4. Usa **Passo** per eseguire un blocco alla volta e osserva le **Variabili**
+5. Crea nuove **funzioni** con il pulsante `+` accanto alla scheda **Main**
+6. **Codice** genera il programma in 7 linguaggi, **Esporta** produce PNG o `.fprg`
 
-1. All'avvio trovi già **Start** e **End** collegati
-2. Clicca sul **`+`** tra i due blocchi
-3. Scegli un blocco dalla categoria (es. `Dichiarazione`)
-4. Scrivi il contenuto nel blocco (es. `Integer x = 5`)
-5. Ripeti per aggiungere altri blocchi
+### Scorciatoie
 
-### 2. Esegui il programma
-
-- **Esegui** — esegue tutto dall'inizio alla fine
-- **Passo** — esegue un blocco alla volta (debug)
-- **Stop** — interrompe l'esecuzione
-- **Velocità** — regola la velocità da Lenta a Turbo
-
-### 3. Esporta
-
-- **C** → genera codice C
-- **Py** → genera codice Python
-- **PNG** → esporta il diagramma come immagine
-- **Salva** → salva il progetto in `.fl`
-
-### 4. Salva il progetto
-
-- La **prima volta** ti chiede dove salvare
-- Le **volte successive** salva direttamente nello stesso file
-- **Nuovo** → resetta e chiede di nuovo il file la prossima volta
+| Tasti | Azione |
+|---|---|
+| `Ctrl+Invio` | Esegui / pausa / continua |
+| `F10` | Passo successivo |
+| `F9` | Breakpoint sul blocco selezionato |
+| `Canc` | Elimina il blocco selezionato |
+| `Ctrl+C` / `Ctrl+V` / `Ctrl+D` | Copia / incolla / duplica |
+| `Ctrl+Z` / `Ctrl+Y` | Annulla / ripeti |
+| `Ctrl+S` / `Ctrl+O` / `Ctrl+N` | Salva / apri / nuovo |
+| `F1` | Guida alla sintassi |
+| `Esc` | Chiudi finestre / ferma l'esecuzione |
 
 ---
 
 ## Sintassi del linguaggio
 
-FlowLab usa una sintassi **semplice e leggibile**, ispirata a Flowgorithm.
+FlowLab usa **la stessa sintassi di Flowgorithm**.
 
-### Dichiarazione di variabili
+### Tipi di dato
 
-```flowlab
-Integer numero
-Real prezzo = 12.50
-String nome = "Mario"
-Boolean trovato = true
-Character iniziale = "A"
+| Tipo | Esempio |
+|---|---|
+| `Integer` | `42`, `-7` |
+| `Real` | `3.14` |
+| `String` | `"ciao"` |
+| `Boolean` | `true`, `false` |
+| `Character` | `'A'` (estensione FlowLab) |
+
+### Blocchi
+
 ```
-
-### Assegnazione
-
-```flowlab
-numero = 10
-somma = a + b
-media = somma / 3
-numero++      ' incremento
-numero--      ' decremento
+Declare   Integer a, b, voti[10]
+Assign    media = (a + b) / 2
+Input     nome
+Output    "Ciao " & nome & ", hai " & eta & " anni"
+If        x > 0 and x <> 5
+While     i < 10
+For       i = 1 to 10 step 2        (crescente o decrescente)
+Do        risposta <> 0             (il corpo viene eseguito almeno una volta)
+Call      Stampa(v)
 ```
-
-### Input / Output
-
-```flowlab
-Input numero
-Output numero
-Output "Ciao"
-Output "Il valore è " & numero
-```
-
-> **Nota sull'operatore `&`** — FlowLab usa `&` per la **concatenazione di stringhe** (come in Flowgorithm), non per l'AND logico. L'AND logico è `AND`.
 
 ### Operatori
 
 | Categoria | Operatori |
 |---|---|
-| Aritmetica | `+` `-` `*` `/` `%` |
-| Confronto | `==` `!=` `<` `>` `<=` `>=` |
-| Logica | `AND` `OR` `NOT` |
+| Aritmetici | `+` `-` `*` `/` `%` o `mod` `^` |
+| Confronto | `=` o `==`, `<>` o `!=`, `<` `<=` `>` `>=` |
+| Logici | `and` o `&&`, `or` o `||`, `not` o `!` |
+| Stringhe | `&` concatena qualsiasi valore |
 
-### Condizioni
+Precedenza (dalla più alta): unari → `^` → `* / mod` → `+ -` → `&` → confronti → `and` → `or`.
 
-```flowlab
-If numero > 5
-  Output "Grande"
-Else
-  Output "Piccolo"
-End If
+### Funzioni intrinseche
+
+| Categoria | Funzioni |
+|---|---|
+| Matematiche | `Abs` `Sqrt` `Int` `Sgn` `Log` `Log10` `Sin` `Cos` `Tan` `Arcsin` `Arccos` `Arctan` `Random(n)` `Pi` |
+| Stringhe | `Len(s)` `Char(s, i)` `Mid(s, inizio, quanti)` |
+| Conversioni | `ToInteger` `ToReal` `ToString` `ToChar` `ToCode` `ToFixed(x, cifre)` |
+| Array | `Size(v)` |
+| Estensioni | `Min` `Max` `Pow` `Round` `Floor` `Ceil` `Exp` `ToUpper` `ToLower` `Trim` `IsNumber` |
+
+### Grafica (blocco Call)
+
+| Categoria | Procedure |
+|---|---|
+| Grafici | `Plot(x, y)` `PlotBar(etichetta, valore)` `ClearPlot()` |
+| Disegno | `ClearCanvas()` `SetColor(c)` `SetFill(c)` `SetLineWidth(n)` `DrawLine` `DrawRect` `FillRect` `DrawCircle` `FillCircle` `DrawText` `DrawPoint` |
+| Tartaruga | `Forward(n)` `Back(n)` `TurnRight(g)` `TurnLeft(g)` `PenUp()` `PenDown()` `Home()` `SetPosition(x, y)` `SetHeading(g)` |
+| Tempo | `Wait(ms)` |
+
+### Funzioni
+
+Ogni funzione ha la propria scheda. Si definiscono nome, parametri (con tipo e flag array), tipo restituito e variabile di ritorno, come in Flowgorithm:
+
 ```
-
-### Cicli
-
-```flowlab
-' For con incremento
-For i = 0 To 10
-  Output i
-End For
-
-' For con decremento e passo
-For i = 10 To 0 Step -2
-  Output i
-End For
-
-' While
-While numero < 10
-  numero = numero + 1
-End While
-
-' Do-While (corpo eseguito almeno una volta)
-Do
-  Input numero
-While numero < 0
+Funzione Fattoriale(Integer n) : Integer   → variabile di ritorno: risultato
+  Declare Integer risultato
+  If n <= 1
+    risultato = 1
+  Else
+    risultato = n * Fattoriale(n - 1)
 ```
-
-### Commenti
-
-```flowlab
-' Questo è un commento
-```
-
----
-
-## Blocchi disponibili
-
-| Categoria | Blocco | Forma | Descrizione |
-|---|---|---|---|
-| **Base** | Start | Ovale | Inizio del programma |
-| | End | Ovale | Fine del programma |
-| **Interazione** | Input | Parallelogramma | Legge un valore dall'utente |
-| | Output | Parallelogramma | Mostra un valore |
-| **Variabili** | Dichiara | Rettangolo tratteggiato | Dichiara una variabile con tipo |
-| | Assegna | Rettangolo | Assegna un valore |
-| **Selezione** | If | Rombo | Condizione Vero/Falso |
-| | Else | Marker | Ramo alternativo |
-| **Cicli** | For | Esagono | Ciclo enumerativo |
-| | While | Esagono | Ciclo con condizione iniziale |
-| | Do-While | Esagono | Ciclo con condizione finale |
-| | Break | Esagono | Interrompe il ciclo |
-| **Utility** | Commento | Nota | Annotazione |
 
 ---
 
 ## Formato file `.fl`
 
-I progetti FlowLab sono salvati in **JSON** con estensione `.fl`:
+I progetti sono salvati in JSON:
 
 ```json
 {
   "app": "FlowLab",
   "format": "flowlab",
-  "version": "23.0",
-  "savedAt": "2026-01-15T10:30:00.000Z",
-  "nodes": [
-    { "id": "abc123", "type": "start", "text": "" },
-    { "id": "def456", "type": "declare", "text": "x", "declareType": "Integer" },
-    { "id": "ghi789", "type": "assign", "text": "x = 10" },
-    { "id": "jkl012", "type": "end", "text": "" }
-  ],
-  "varDefs": {
-    "x": { "type": "Integer", "default": 0 }
-  }
-}
-```
-
-### Proprietà dei nodi
-
-| Campo | Descrizione |
-|---|---|
-| `id` | Identificativo univoco |
-| `type` | Tipo di blocco (`start`, `end`, `declare`, `assign`, `input`, `output`, `if`, `else`, `endif`, `for`, `while`, `dowhile`, `endloop`, `break`, `comment`) |
-| `text` | Contenuto testuale del blocco |
-| `declareType` | (solo per `declare`) Tipo della variabile |
-| `forData` | (solo per `for`) Configurazione del ciclo |
-
----
-
-## Generazione di codice
-
-### Esempio FlowLab
-
-```flowlab
-Integer numero = 5
-Integer somma = 0
-
-For i = 0 To numero
-  somma = somma + i
-End For
-
-Output "Somma: " & somma
-```
-
-### Codice C generato
-
-```c
-/* Generato da FlowLab 23.0 — linguaggio C */
-#include <stdio.h>
-#include <string.h>
-
-int main(void) {
-    int numero = 5;
-    int somma = 0;
-    int i;
-    for (i = 0; i <= numero; i += 1) {
-        somma = somma + i;
+  "version": "25.0",
+  "name": "Fattoriale",
+  "funcs": [
+    {
+      "name": "Main", "params": [], "returnType": "None", "returnVar": "",
+      "nodes": [
+        { "id": "a1", "type": "start", "text": "" },
+        { "id": "a2", "type": "declare", "declareType": "Integer", "text": "n" },
+        { "id": "a3", "type": "output", "text": "n & \"! = \" & Fattoriale(n)", "newline": true },
+        { "id": "a4", "type": "end", "text": "" }
+      ]
     }
-    printf("Somma: %d\n", somma);
-    return 0;
+  ]
 }
 ```
 
-### Codice Python generato
-
-```python
-# Generato da FlowLab 23.0 — linguaggio Python
-
-def main():
-    numero = 5
-    somma = 0
-    for i in range(0, numero + 1):
-        somma = somma + i
-    print("Somma: ", somma)
-
-
-if __name__ == "__main__":
-    main()
-```
+I file della versione 24 (con `nodes` e `varDefs`) vengono convertiti automaticamente. FlowLab apre e salva anche i file **`.fprg`** di Flowgorithm.
 
 ---
 
@@ -408,109 +289,57 @@ if __name__ == "__main__":
 
 ```
 FlowLab/
-├── index.html              # Struttura dell'interfaccia
-├── style.css               # Fogli di stile completi
-├── app.js                  # Logica dell'applicazione (vanilla JS)
-├── manifest.json           # Manifest PWA
-├── sw.js                   # Service Worker (offline-first)
-├── README.md               # Questo file
-└── Immagini/
-    ├── icon-70.png         # Favicon piccola
-    ├── icon-144.png        # iOS / favicon
-    ├── icon-150.png        # Windows tile
-    ├── icon-192.png        # Android + manifest
-    ├── icon-310.png        # Windows / macOS
-    └── icon-512.png        # Splash + manifest
+├── index.html      # Interfaccia
+├── style.css       # Stili (tema chiaro/scuro, responsive)
+├── engine.js       # Lexer, parser, valutatore tipizzato, interprete
+├── codegen.js      # Generatori Python, C, C++, Java, C#, JavaScript, pseudocodice
+├── fprg.js         # Import/export formato Flowgorithm
+├── charts.js       # Grafici, array animati, canvas di disegno e tartaruga
+├── examples.js     # Libreria di esempi
+├── app.js          # Editor, layout, esecuzione, file, UI
+├── manifest.json   # Manifest PWA
+├── sw.js           # Service Worker (offline)
+└── Immagini/       # Icone e screenshot
 ```
-
----
 
 ## Architettura tecnica
 
-### Stack
-
-- **Vanilla JavaScript** (ES2020+) — nessun framework, nessuna build
-- **CSS3 moderno** — Custom Properties, Grid, Flexbox
-- **SVG** — per le forme dei blocchi e i collegamenti
-- **Canvas 2D** — per l'export PNG
-- **Service Worker API** — per il funzionamento offline
-- **File System Access API** — per il salvataggio diretto su file
-- **IndexedDB** — per memorizzare l'handle del file
-- **localStorage** — per l'auto-salvataggio
-
-### Moduli interni
-
-| Modulo | Responsabilità |
-|---|---|
-| **Model** | `state.nodes`, `state.varDefs` — rappresentazione dati del flowchart |
-| **Parser** | `parseBlock()` — trasforma l'array piatto in un albero strutturato |
-| **Layout Engine** | `buildLayout()` — calcola posizioni, collegamenti, merge, etichette |
-| **Renderer** | `render()`, `renderLinks()` — disegna nodi, frecce, overlay |
-| **Interpreter** | `executeBlock()` — esegue l'albero con timing e highlight |
-| **Validator** | Controlli inline durante l'esecuzione |
-| **File Manager** | `saveToFile()`, `loadFromFile()`, `exportPNG()` |
-| **Code Generator** | `generateC()`, `generatePython()` |
-
-### Pipeline di esecuzione
-
 ```
-Editor grafico (drag & drop)
-       ↓
-state.nodes[]  (array piatto di blocchi)
-       ↓
-parseBlock()  (→ albero strutturato con rami)
-       ↓
-executeBlock()  (interprete ricorsivo)
-       ↓
-Console + highlight in tempo reale
+Editor (blocchi)  →  lista piatta per funzione  →  parseBlock() albero strutturato
+                                                    ├─ Runner (interprete asincrono: passi, breakpoint, stack)
+                                                    ├─ codegen (AST → 7 linguaggi)
+                                                    └─ fprg (XML Flowgorithm)
+Espressioni: lex() → Parser Pratt → AST → valutazione tipizzata
 ```
+
+- **Vanilla JavaScript**, nessuna dipendenza e nessuna build
+- Le espressioni non vengono mai eseguite con `eval`: un parser dedicato garantisce la stessa semantica di Flowgorithm e messaggi d'errore precisi
+- **SVG** per i collegamenti, **Canvas** per grafici, disegno ed export PNG
 
 ---
 
 ## Compatibilità
 
-| Browser | Versione minima | Note |
-|---|---|---|
-| **Chrome** | 90+ | Supporto completo (File System Access API) |
-| **Edge** | 90+ | Supporto completo |
-| **Firefox** | 90+ | Manca File System Access API (usa download) |
-| **Safari** | 15+ | Manca File System Access API (usa download) |
-| **Chrome Android** | 90+ | Installabile |
-| **Safari iOS** | 15+ | Installabile come PWA |
+| Browser | Note |
+|---|---|
+| Chrome / Edge 90+ | Supporto completo (salvataggio diretto su file) |
+| Firefox 90+ / Safari 15+ | Il salvataggio usa il download |
+| Chrome Android / Safari iOS | Installabile come app |
 
 ---
 
 ## Roadmap
 
-### Fatto
-- [x] Editor visuale con drag & drop
-- [x] Tutti i blocchi principali
-- [x] Esecuzione con passi e velocità
-- [x] Variabili tipizzate
-- [x] Generazione C e Python
-- [x] Salvataggio `.fl` diretto
-- [x] Export PNG
-- [x] PWA installabile e offline
-- [x] Responsive mobile
-- [x] Zoom centrato + pinch
-- [x] Pannelli esclusivi mobile
-
-### In corso / Prossimamente
-- [ ] Array monodimensionali
-- [ ] Funzioni definite dall'utente
-- [ ] Passaggio parametri per valore/riferimento (`&var`)
-- [ ] Cicli `Switch`/`Case`
-- [ ] Editor del codice C/Python con syntax highlighting
-- [ ] Multi-flowchart per progetto
-- [ ] Temi chiaro/scuro/neon selezionabili
-- [ ] Esportazione in Java / JavaScript
-
-### Idee future
-- [ ] Debugger con breakpoint
-- [ ] Timeline dell'esecuzione (step-back)
-- [ ] Grafici e chart in output
-- [ ] Import/Export da Flowgorithm
-- [ ] Modalità collaborativa (multiplayer)
+- [x] Sintassi e funzioni intrinseche di Flowgorithm
+- [x] Array e funzioni definite dall'utente con ricorsione
+- [x] Debugger con breakpoint, passo-passo e stack delle chiamate
+- [x] Grafici, array animati, disegno e grafica a tartaruga
+- [x] Codice in Python, C, C++, Java, C#, JavaScript e pseudocodice
+- [x] Import/Export `.fprg` di Flowgorithm
+- [x] Tema chiaro/scuro
+- [ ] Timeline dell'esecuzione (passo indietro)
+- [ ] Matrici (array bidimensionali)
+- [ ] Modalità collaborativa
 
 ---
 

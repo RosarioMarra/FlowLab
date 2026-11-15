@@ -6,7 +6,7 @@
    - Altri asset: cache-first con fallback network
    ============================================================ */
 
-const CACHE_NAME = 'flowlab-v22.0.0';
+const CACHE_NAME = 'flowlab-v25.0.0';
 const RUNTIME_CACHE = 'flowlab-runtime';
 
 /* File da pre-cachare all'installazione */
@@ -14,6 +14,11 @@ const PRECACHE_ASSETS = [
   './',
   './index.html',
   './style.css',
+  './engine.js',
+  './codegen.js',
+  './fprg.js',
+  './examples.js',
+  './charts.js',
   './app.js',
   './manifest.json',
   './Immagini/icon-70.png',
@@ -26,7 +31,7 @@ const PRECACHE_ASSETS = [
 
 /* ---------- Install ---------- */
 self.addEventListener('install', (event) => {
-  console.log('[SW] Install v22.0.0');
+  console.log('[SW] Install v25.0.0');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {

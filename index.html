@@ -4,9 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#1a237e" />
-<meta name="description" content="FlowLab — Editor di flowchart visuale con esecuzione in tempo reale." />
+<meta name="description" content="FlowLab — Editor di flowchart con sintassi Flowgorithm: esecuzione passo-passo, funzioni, array, grafici e generazione di codice." />
 
-<link rel="manifest" href="manifest.json?v=2" />
+<link rel="manifest" href="manifest.json?v=3" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="FlowLab" />
@@ -15,91 +15,109 @@
 <meta name="msapplication-TileImage" content="Immagini/icon-150.png" />
 
 <link rel="icon" type="image/png" sizes="70x70"   href="Immagini/icon-70.png" />
-<link rel="icon" type="image/png" sizes="144x144" href="Immagini/icon-144.png" />
-<link rel="icon" type="image/png" sizes="150x150" href="Immagini/icon-150.png" />
 <link rel="icon" type="image/png" sizes="192x192" href="Immagini/icon-192.png" />
-<link rel="icon" type="image/png" sizes="310x310" href="Immagini/icon-310.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="Immagini/icon-512.png" />
-<link rel="apple-touch-icon" sizes="144x144" href="Immagini/icon-144.png" />
-<link rel="apple-touch-icon" sizes="150x150" href="Immagini/icon-150.png" />
 <link rel="apple-touch-icon" sizes="192x192" href="Immagini/icon-192.png" />
 
 <title>FlowLab</title>
-<link rel="stylesheet" href="style.css" />
+<script>
+  /* tema applicato prima del rendering per evitare flash */
+  try{ var t = localStorage.getItem('flowlab.theme'); if(t) document.documentElement.setAttribute('data-theme', t); }catch(e){}
+</script>
+<link rel="stylesheet" href="style.css?v=25" />
 </head>
 <body>
 
 <header class="topbar">
   <div class="brand">
-    <img src="Immagini/icon-70.png" alt="FlowLab" class="brand-logo" />
+    <img src="Immagini/icon-70.png" alt="" class="brand-logo" />
     <span class="brand-name">FlowLab</span>
+    <span class="file-name" id="fileName" title="Nome del progetto">programma</span>
   </div>
 
   <div class="toolbar" id="toolbar">
-    <button id="btnRun" class="tb tb-primary tb-run-control" title="Esegui">
-      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/></svg>
-      <span class="lbl">Esegui</span>
+    <button id="btnRun" class="tb tb-primary tb-run-control" title="Esegui (Ctrl+Invio)">
+      <svg viewBox="0 0 24 24" class="ico ico-play" aria-hidden="true"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/></svg>
+      <svg viewBox="0 0 24 24" class="ico ico-pause" aria-hidden="true"><path d="M6 4 H10 V20 H6 Z M14 4 H18 V20 H14 Z" fill="currentColor"/></svg>
+      <span class="lbl" id="btnRunLbl">Esegui</span>
     </button>
-    <button id="btnStep" class="tb tb-run-control" title="Passo">
+    <button id="btnStep" class="tb tb-run-control" title="Passo successivo (F10)">
       <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M5 4 L15 12 L5 20 Z M17 4 L19 4 L19 20 L17 20 Z" fill="currentColor"/></svg>
       <span class="lbl">Passo</span>
     </button>
-    <button id="btnStop" class="tb tb-danger tb-run-control" title="Ferma" disabled>
+    <button id="btnStop" class="tb tb-danger tb-run-control" title="Ferma (Esc)" disabled>
       <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><rect x="6" y="6" width="12" height="12" fill="currentColor"/></svg>
       <span class="lbl">Stop</span>
     </button>
 
     <span class="tb-sep tb-run-control"></span>
 
-    <button id="btnUndo" class="tb tb-icon tb-secondary" title="Annulla">
-      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 5 V1 L6 6 L12 11 V7 C16 7 19 10 19 14 C19 18 16 21 12 21 C8 21 5 18 5 14 H3 C3 19 7 23 12 23 C17 23 21 19 21 14 C21 9 17 5 12 5 Z" fill="currentColor"/></svg>
+    <button id="btnUndo" class="tb tb-icon tb-secondary" title="Annulla (Ctrl+Z)">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M9 7 H4 V2 M4 7 C6.5 4 9.5 3 13 3 C18 3 21 7 21 12 C21 17 17 21 12 21 C8.5 21 5.6 19 4.4 16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-    <button id="btnRedo" class="tb tb-icon tb-secondary" title="Ripeti">
-      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 5 V1 L18 6 L12 11 V7 C8 7 5 10 5 14 C5 18 8 21 12 21 C16 21 19 18 19 14 H21 C21 19 17 23 12 23 C7 23 3 19 3 14 C3 9 7 5 12 5 Z" fill="currentColor"/></svg>
+    <button id="btnRedo" class="tb tb-icon tb-secondary" title="Ripeti (Ctrl+Y)">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M15 7 H20 V2 M20 7 C17.5 4 14.5 3 11 3 C6 3 3 7 3 12 C3 17 7 21 12 21 C15.5 21 18.4 19 19.6 16" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
 
     <span class="tb-sep tb-secondary"></span>
 
-    <label class="speed tb-secondary">
+    <label class="speed tb-secondary" title="Velocità di esecuzione">
       <span class="speed-lbl">Velocità</span>
-      <input id="speedRange" type="range" min="1" max="5" value="3" />
+      <input id="speedRange" type="range" min="1" max="6" value="3" />
       <span id="speedLabel" class="speed-val">Normale</span>
     </label>
 
     <span class="tb-sep tb-secondary"></span>
 
-    <button id="btnNew" class="tb tb-secondary" title="Nuovo">
+    <button id="btnNew" class="tb tb-secondary" title="Nuovo (Ctrl+N)">
       <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M6 3 H14 L20 9 V21 H4 V3 Z M14 3 V9 H20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span class="lbl">Nuovo</span>
     </button>
-    <button id="btnSave" class="tb tb-secondary" title="Salva">
-      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M5 3 H17 L21 7 V21 H3 V3 Z M7 5 V11 H17 V5 Z M7 13 V19 H17 V13 Z" fill="currentColor" fill-rule="evenodd"/></svg>
-      <span class="lbl">Salva</span>
-    </button>
-    <button id="btnLoad" class="tb tb-secondary" title="Apri">
+    <button id="btnLoad" class="tb tb-secondary" title="Apri .fl / .fprg (Ctrl+O)">
       <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M3 5 H10 L12 7 H21 V19 H3 Z" fill="currentColor"/></svg>
       <span class="lbl">Apri</span>
     </button>
-    <button id="btnExportPNG" class="tb tb-secondary" title="Esporta PNG">
-      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M3 4 H21 V20 H3 Z M5 6 V18 H19 V6 Z M8 14 L11 11 L14 15 L16 13 L19 16 H5 Z" fill="currentColor" fill-rule="evenodd"/></svg>
-      <span class="lbl">PNG</span>
+    <button id="btnSave" class="tb tb-secondary" title="Salva (Ctrl+S)">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M5 3 H17 L21 7 V21 H3 V3 Z M7 5 V11 H17 V5 Z M7 13 V19 H17 V13 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+      <span class="lbl">Salva</span>
     </button>
-    <button id="btnExportC" class="tb tb-secondary" title="Genera C">
-      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M8 4 H10 V20 H8 Z M6 6 H4 V18 H6 Z M14 4 H16 V20 H14 Z M18 6 V18 H20 V6 Z" fill="currentColor"/></svg>
-      <span class="lbl">C</span>
+    <button id="btnExamples" class="tb tb-secondary" title="Esempi pronti">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M4 4 H10 V10 H4 Z M14 4 H20 V10 H14 Z M4 14 H10 V20 H4 Z M14 14 H20 V20 H14 Z" fill="currentColor"/></svg>
+      <span class="lbl">Esempi</span>
     </button>
-    <button id="btnExportPy" class="tb tb-secondary" title="Genera Python">
-      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 3 C7 3 7 6 7 7 V9 H12 V10 H6 C4 10 3 12 3 15 C3 18 5 19 6 19 H8 V16 C8 14 9 13 11 13 H16 C18 13 18 11 18 9 V7 C18 5 17 3 12 3 Z" fill="currentColor"/></svg>
-      <span class="lbl">Py</span>
+
+    <span class="tb-sep tb-secondary"></span>
+
+    <button id="btnCode" class="tb tb-secondary" title="Genera codice">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M8 6 L2 12 L8 18 M16 6 L22 12 L16 18 M14 4 L10 20" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="lbl">Codice</span>
+    </button>
+    <div class="dropdown tb-secondary">
+      <button id="btnExport" class="tb" title="Esporta" aria-haspopup="true">
+        <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 3 V15 M7 10 L12 15 L17 10 M4 17 V21 H20 V17" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="lbl">Esporta</span>
+      </button>
+      <div class="dropdown-menu" id="exportMenu" hidden>
+        <button data-action="exportPNG">Diagramma come immagine PNG</button>
+        <button data-action="exportFprg">File Flowgorithm (.fprg)</button>
+        <button data-action="exportGfx">Disegno come PNG</button>
+        <button data-action="saveAs">Salva con nome (.fl)…</button>
+      </div>
+    </div>
+
+    <span class="tb-sep tb-secondary"></span>
+
+    <button id="btnTheme" class="tb tb-icon tb-secondary" title="Tema chiaro / scuro">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M21 13 A9 9 0 1 1 11 3 A7 7 0 0 0 21 13 Z" fill="currentColor"/></svg>
+    </button>
+    <button id="btnHelp" class="tb tb-icon tb-secondary" title="Guida alla sintassi (F1)">
+      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><circle cx="12" cy="12" r="9.5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M9.2 9.3 C9.4 7.6 10.6 6.7 12.1 6.7 C13.8 6.7 15 7.8 15 9.3 C15 11.5 12.2 11.6 12.2 13.8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="12.2" cy="17.2" r="1.3" fill="currentColor"/></svg>
     </button>
     <button id="btnFullscreen" class="tb tb-icon tb-secondary" title="Schermo intero">
       <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M4 4 H9 V6 H6 V9 H4 Z M15 4 H20 V9 H18 V6 H15 Z M4 15 H6 V18 H9 V20 H4 Z M18 15 H20 V20 H15 V18 H18 Z" fill="currentColor"/></svg>
     </button>
-    <button id="btnReset" class="tb tb-danger tb-icon tb-secondary" title="Reset">
-      <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M6 7 H18 L17 21 H7 Z M9 4 H15 V6 H9 Z" fill="currentColor" fill-rule="evenodd"/></svg>
-    </button>
 
-    <input id="fileInput" type="file" accept=".fl,application/json" hidden />
+    <input id="fileInput" type="file" accept=".fl,.fprg,.json,application/json,application/xml,text/xml" hidden />
   </div>
 
   <button id="btnMenu" class="menu-btn" title="Altro" aria-label="Altro">⋯</button>
@@ -108,54 +126,26 @@
 <div class="mobile-menu" id="mobileMenu" hidden>
   <div class="mobile-menu-backdrop" id="mobileMenuBackdrop"></div>
   <div class="mobile-menu-panel" role="menu">
-    <div class="mm-header">Azioni</div>
-    <button class="mm-item" data-action="undo">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M12 5 V1 L6 6 L12 11 V7 C16 7 19 10 19 14 C19 18 16 21 12 21 C8 21 5 18 5 14 H3 C3 19 7 23 12 23 C17 23 21 19 21 14 C21 9 17 5 12 5 Z" fill="currentColor"/></svg>
-      <span>Annulla</span>
-    </button>
-    <button class="mm-item" data-action="redo">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M12 5 V1 L18 6 L12 11 V7 C8 7 5 10 5 14 C5 18 8 21 12 21 C16 21 19 18 19 14 H21 C21 19 17 23 12 23 C7 23 3 19 3 14 C3 9 7 5 12 5 Z" fill="currentColor"/></svg>
-      <span>Ripeti</span>
-    </button>
+    <div class="mm-header">Progetto</div>
+    <button class="mm-item" data-action="undo"><span>↶</span><span>Annulla</span></button>
+    <button class="mm-item" data-action="redo"><span>↷</span><span>Ripeti</span></button>
     <div class="mm-divider"></div>
-    <button class="mm-item" data-action="new">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M6 3 H14 L20 9 V21 H4 V3 Z M14 3 V9 H20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>Nuovo</span>
-    </button>
-    <button class="mm-item" data-action="save">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M5 3 H17 L21 7 V21 H3 V3 Z M7 5 V11 H17 V5 Z M7 13 V19 H17 V13 Z" fill="currentColor" fill-rule="evenodd"/></svg>
-      <span>Salva</span>
-    </button>
-    <button class="mm-item" data-action="load">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M3 5 H10 L12 7 H21 V19 H3 Z" fill="currentColor"/></svg>
-      <span>Apri</span>
-    </button>
+    <button class="mm-item" data-action="new"><span>＋</span><span>Nuovo</span></button>
+    <button class="mm-item" data-action="load"><span>📂</span><span>Apri .fl / .fprg</span></button>
+    <button class="mm-item" data-action="save"><span>💾</span><span>Salva</span></button>
+    <button class="mm-item" data-action="examples"><span>▦</span><span>Esempi</span></button>
     <div class="mm-divider"></div>
-    <button class="mm-item" data-action="exportPNG">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M3 4 H21 V20 H3 Z M5 6 V18 H19 V6 Z M8 14 L11 11 L14 15 L16 13 L19 16 H5 Z" fill="currentColor" fill-rule="evenodd"/></svg>
-      <span>Esporta PNG</span>
-    </button>
-    <button class="mm-item" data-action="exportC">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M8 4 H10 V20 H8 Z M6 6 H4 V18 H6 Z M14 4 H16 V20 H14 Z M18 6 V18 H20 V6 Z" fill="currentColor"/></svg>
-      <span>Genera C</span>
-    </button>
-    <button class="mm-item" data-action="exportPy">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M12 3 C7 3 7 6 7 7 V9 H12 V10 H6 C4 10 3 12 3 15 C3 18 5 19 6 19 H8 V16 C8 14 9 13 11 13 H16 C18 13 18 11 18 9 V7 C18 5 17 3 12 3 Z" fill="currentColor"/></svg>
-      <span>Genera Python</span>
-    </button>
+    <button class="mm-item" data-action="code"><span>&lt;/&gt;</span><span>Genera codice</span></button>
+    <button class="mm-item" data-action="exportPNG"><span>🖼</span><span>Esporta PNG</span></button>
+    <button class="mm-item" data-action="exportFprg"><span>⇩</span><span>Esporta Flowgorithm (.fprg)</span></button>
     <div class="mm-divider"></div>
-    <button class="mm-item" data-action="fullscreen">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M4 4 H9 V6 H6 V9 H4 Z M15 4 H20 V9 H18 V6 H15 Z M4 15 H6 V18 H9 V20 H4 Z M18 15 H20 V20 H15 V18 H18 Z" fill="currentColor"/></svg>
-      <span>Schermo intero</span>
-    </button>
-    <button class="mm-item mm-item-danger" data-action="reset">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M6 7 H18 L17 21 H7 Z M9 4 H15 V6 H9 Z" fill="currentColor" fill-rule="evenodd"/></svg>
-      <span>Reset progetto</span>
-    </button>
+    <button class="mm-item" data-action="theme"><span>◐</span><span>Tema chiaro / scuro</span></button>
+    <button class="mm-item" data-action="help"><span>?</span><span>Guida alla sintassi</span></button>
+    <button class="mm-item" data-action="fullscreen"><span>⛶</span><span>Schermo intero</span></button>
     <div class="mm-divider"></div>
     <div class="mm-speed">
       <label>Velocità</label>
-      <input id="mmSpeed" type="range" min="1" max="5" value="3" />
+      <input id="mmSpeed" type="range" min="1" max="6" value="3" />
       <span id="mmSpeedLabel">Normale</span>
     </div>
   </div>
@@ -171,50 +161,53 @@
       </button>
     </div>
     <div class="panel-body">
-      <div class="cat"><div class="cat-title">Base</div><div class="cat-items">
-        <button class="card" data-add="start"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="14" fill="#E8D5F5" stroke="#9370DB" stroke-width="2"/></svg><span>Start</span></button>
-        <button class="card" data-add="end"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="14" fill="#E8D5F5" stroke="#9370DB" stroke-width="2"/></svg><span>End</span></button>
-      </div></div>
-
-      <div class="cat"><div class="cat-title">Interazione</div><div class="cat-items">
-        <button class="card" data-add="input"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 58,2 50,30 2,30" fill="#D6E8F5" stroke="#1976D2" stroke-width="2"/></svg><span>Input</span></button>
-        <button class="card" data-add="output"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 58,2 50,30 2,30" fill="#D4F1D4" stroke="#2E7D32" stroke-width="2"/></svg><span>Output</span></button>
+      <p class="palette-tip">Clicca un blocco per aggiungerlo in fondo, oppure trascinalo su un <b>+</b> del diagramma.</p>
+      <div class="cat"><div class="cat-title">Input / Output</div><div class="cat-items">
+        <button class="card" data-add="input" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 58,2 50,30 2,30" class="sp sp-input"/></svg><span>Input</span></button>
+        <button class="card" data-add="output" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 58,2 50,30 2,30" class="sp sp-output"/></svg><span>Output</span></button>
       </div></div>
 
       <div class="cat"><div class="cat-title">Variabili</div><div class="cat-items">
-        <button class="card" data-add="declare"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="2" fill="#FFF9C4" stroke="#B8860B" stroke-width="2"/><line x1="14" y1="2" x2="14" y2="30" stroke="#B8860B" stroke-width="1.5"/></svg><span>Dichiara</span></button>
-        <button class="card" data-add="assign"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="3" fill="#FFF9C4" stroke="#F9A825" stroke-width="2"/></svg><span>Assegna</span></button>
+        <button class="card" data-add="declare" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="2" class="sp sp-declare"/><line x1="12" y1="2" x2="12" y2="30" class="sp-line sp-declare"/><line x1="2" y1="10" x2="58" y2="10" class="sp-line sp-declare"/></svg><span>Declare</span></button>
+        <button class="card" data-add="assign" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="2" class="sp sp-assign"/></svg><span>Assign</span></button>
       </div></div>
 
       <div class="cat"><div class="cat-title">Selezione</div><div class="cat-items">
-        <button class="card" data-add="if"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="30,2 58,16 30,30 2,16" fill="#FFD9E0" stroke="#C2185B" stroke-width="2"/></svg><span>If</span></button>
-        <button class="card" data-add="else"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="8" width="56" height="16" rx="2" fill="#FFE8EE" stroke="#C2185B" stroke-width="2"/></svg><span>Else</span></button>
+        <button class="card" data-add="if" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="30,2 58,16 30,30 2,16" class="sp sp-if"/></svg><span>If</span></button>
+        <button class="card" data-add="call" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="2" class="sp sp-call"/><line x1="9" y1="2" x2="9" y2="30" class="sp-line sp-call"/><line x1="51" y1="2" x2="51" y2="30" class="sp-line sp-call"/></svg><span>Call</span></button>
       </div></div>
 
       <div class="cat"><div class="cat-title">Cicli</div><div class="cat-items">
-        <button class="card" data-add="for"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" fill="#FFE4C4" stroke="#E65100" stroke-width="2"/></svg><span>For</span></button>
-        <button class="card" data-add="while"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" fill="#FFE4C4" stroke="#E65100" stroke-width="2"/></svg><span>While</span></button>
-        <button class="card" data-add="dowhile"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" fill="#FFE4C4" stroke="#E65100" stroke-width="2"/></svg><span>Do-While</span></button>
-        <button class="card" data-add="break"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" fill="#FFE4C4" stroke="#E65100" stroke-width="2"/></svg><span>Break</span></button>
+        <button class="card" data-add="while" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" class="sp sp-loop"/></svg><span>While</span></button>
+        <button class="card" data-add="for" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" class="sp sp-loop"/></svg><span>For</span></button>
+        <button class="card" data-add="dowhile" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><polygon points="10,2 50,2 58,16 50,30 10,30 2,16" class="sp sp-loop"/></svg><span>Do</span></button>
+        <button class="card" data-add="break" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="8" y="6" width="44" height="20" rx="10" class="sp sp-loop"/></svg><span>Break</span></button>
       </div></div>
 
-      <div class="cat"><div class="cat-title">Utility</div><div class="cat-items">
-        <button class="card" data-add="comment"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="2" width="56" height="28" rx="3" fill="#EEEEEE" stroke="#757575" stroke-width="2" stroke-dasharray="4 3"/></svg><span>Commento</span></button>
+      <div class="cat"><div class="cat-title">Altro</div><div class="cat-items">
+        <button class="card" data-add="comment" draggable="true"><svg viewBox="0 0 60 32" class="shape-preview"><path d="M14 3 H4 V29 H14" class="sp-line sp-comment" fill="none"/><line x1="18" y1="11" x2="54" y2="11" class="sp-line sp-comment"/><line x1="18" y1="21" x2="46" y2="21" class="sp-line sp-comment"/></svg><span>Commento</span></button>
+        <button class="card card-func" id="cardNewFunc"><svg viewBox="0 0 60 32" class="shape-preview"><rect x="2" y="4" width="56" height="24" rx="12" class="sp sp-start"/><text x="30" y="20" text-anchor="middle" font-size="12" font-weight="700" class="sp-text">f(x)</text></svg><span>Funzione</span></button>
       </div></div>
 
       <div class="hint">
-        <b>Sintassi FlowLab</b><br />
-        <code>Output "Ciao"</code><br />
-        <code>Output "Il valore è " &amp; a</code><br />
-        <code>Input nome</code><br />
-        <code>If x &gt; 5 AND x &lt; 10</code>
+        <b>Sintassi Flowgorithm</b>
+        <code>Output "Ciao " &amp; nome</code>
+        <code>x = (a + b) / 2</code>
+        <code>If x &gt;= 5 and x &lt;&gt; 9</code>
+        <code>n mod 2 = 0</code>
+        <code>v[i] = Random(100)</code>
+        <code>Len(s)  Sqrt(x)  ToString(n)</code>
+        <button class="link-btn" id="hintMore">Guida completa →</button>
       </div>
     </div>
   </aside>
 
   <section class="canvas-area">
     <div class="canvas-toolbar">
-      <span class="ct-label">Canvas</span>
+      <div class="func-tabs" id="funcTabs" role="tablist" aria-label="Funzioni"></div>
+      <button class="ct-btn ct-add" id="btnAddFunc" title="Nuova funzione">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M11 5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z" fill="currentColor"/></svg>
+      </button>
       <span class="ct-sep"></span>
       <button class="ct-btn" id="ctZoomOut" title="Zoom −">
         <svg viewBox="0 0 24 24" class="ico"><path d="M5 11 H19 V13 H5 Z" fill="currentColor"/></svg>
@@ -226,9 +219,11 @@
       <button class="ct-btn" id="ctReset" title="Adatta alla vista">
         <svg viewBox="0 0 24 24" class="ico"><path d="M4 4 H9 V6 H6 V9 H4 Z M15 4 H20 V9 H18 V6 H15 Z M4 15 H6 V18 H9 V20 H4 Z M18 15 H20 V20 H15 V18 H18 Z M8 8 H16 V16 H8 Z" fill="currentColor" fill-rule="evenodd"/></svg>
       </button>
-      <span class="ct-sep"></span>
+      <button class="ct-btn" id="ctHeat" title="Mostra quante volte è stato eseguito ogni blocco">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M4 20 V13 H8 V20 Z M10 20 V8 H14 V20 Z M16 20 V4 H20 V20 Z" fill="currentColor"/></svg>
+      </button>
       <span class="status" id="statusText">Pronto</span>
-      <span class="steps" id="statusSteps">0 step</span>
+      <span class="steps" id="statusSteps">0 passi</span>
     </div>
 
     <div class="canvas-wrap" id="canvasWrap">
@@ -239,31 +234,72 @@
           <div class="overlay" id="overlay"></div>
         </div>
       </div>
+      <div class="error-banner" id="errorBanner" hidden>
+        <span class="eb-icon">!</span><span class="eb-text" id="errorText"></span>
+        <button class="eb-close" id="errorClose" title="Chiudi">×</button>
+      </div>
     </div>
   </section>
 
   <aside class="panel panel-right" id="panelRight">
-    <div class="panel-header">
-      <span class="panel-title">VARIABILI</span>
+    <div class="rtabs" role="tablist">
+      <button class="rtab active" data-pane="console" role="tab">Console</button>
+      <button class="rtab" data-pane="vars" role="tab">Variabili</button>
+      <button class="rtab" data-pane="charts" role="tab">Grafici</button>
+      <button class="rtab" data-pane="draw" role="tab">Disegno</button>
       <button class="panel-toggle" data-close="panelRight" title="Chiudi">
         <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
       </button>
     </div>
-    <div class="panel-body vars-body">
-      <div id="varList"><p class="empty">Nessuna variabile</p></div>
-      <button class="add-var" id="btnAddVar">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M11 5 H13 V11 H19 V13 H13 V19 H11 V13 H5 V11 H11 Z" fill="currentColor"/></svg>
-        Nuova variabile
-      </button>
+
+    <div class="rpane active" data-pane="console">
+      <div class="pane-tools">
+        <label class="chk"><input type="checkbox" id="chkTrace" /> Traccia esecuzione</label>
+        <button class="mini-btn" id="btnClearConsole" title="Pulisci console">Pulisci</button>
+      </div>
+      <div class="console" id="console"></div>
+      <form class="console-input" id="consoleInputForm" hidden autocomplete="off">
+        <span class="ci-prompt" id="ciPrompt">›</span>
+        <input id="consoleInput" type="text" placeholder="Scrivi e premi Invio" spellcheck="false" />
+        <button type="submit" class="ci-ok">Invio</button>
+      </form>
     </div>
 
-    <div class="panel-header console-header">
-      <span class="panel-title">CONSOLE</span>
-      <button class="panel-toggle" id="btnClearConsole" title="Pulisci">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M6 7 H18 L17 21 H7 Z M9 4 H15 V6 H9 Z" fill="currentColor" fill-rule="evenodd"/></svg>
-      </button>
+    <div class="rpane" data-pane="vars">
+      <div class="pane-body" id="varList"><p class="empty">Le variabili compaiono qui durante l'esecuzione.</p></div>
     </div>
-    <div class="console" id="console"><div class="line sys">[FlowLab] Pronto. Premi Esegui.</div></div>
+
+    <div class="rpane" data-pane="charts">
+      <div class="pane-body charts-body">
+        <div class="chart-card" id="varCard">
+          <div class="chart-title">Andamento delle variabili</div>
+          <canvas class="chart-canvas" id="varCanvas"></canvas>
+          <div class="chart-legend" id="varLegend"></div>
+        </div>
+        <div class="chart-card" id="arrCard" hidden>
+          <div class="chart-title">Array (aggiornati in tempo reale)</div>
+          <div id="arrWrap"></div>
+        </div>
+        <div class="chart-card" id="plotCard" hidden>
+          <div class="chart-title">Plot <span class="chart-sub">Plot(x, y) · PlotBar(etichetta, valore)</span></div>
+          <canvas class="chart-canvas" id="plotCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="rpane" data-pane="draw">
+      <div class="pane-body draw-body">
+        <div class="gfx-wrap">
+          <canvas id="gfxCanvas" width="400" height="400"></canvas>
+          <canvas id="gfxTurtle" width="400" height="400"></canvas>
+        </div>
+        <div class="gfx-tools">
+          <button class="mini-btn" id="btnGfxClear">Pulisci</button>
+          <button class="mini-btn" id="btnGfxSave">Scarica PNG</button>
+        </div>
+        <p class="gfx-help">Usa il blocco <b>Call</b>: <code>DrawCircle(200, 200, 50)</code>, <code>SetColor("red")</code>, <code>Forward(80)</code>, <code>TurnRight(90)</code>… Area 400×400, origine in alto a sinistra.</p>
+      </div>
+    </div>
   </aside>
 
   <nav class="mobile-tabs">
@@ -271,161 +307,217 @@
       <svg viewBox="0 0 24 24" class="ico"><path d="M4 5 H20 V8 H4 Z M4 11 H20 V14 H4 Z M4 17 H20 V20 H4 Z" fill="currentColor"/></svg>
       <span>Blocchi</span>
     </button>
-
     <div class="mtab-center" role="group" aria-label="Controlli esecuzione">
       <button class="mtab-ctrl" id="mtabStep" title="Passo" aria-label="Passo">
         <svg viewBox="0 0 24 24" class="ico"><path d="M5 4 L15 12 L5 20 Z M17 4 L19 4 L19 20 L17 20 Z" fill="currentColor"/></svg>
       </button>
       <button class="mtab-ctrl mtab-ctrl-run" id="mtabRun" title="Esegui" aria-label="Esegui">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 24" class="ico ico-play"><path d="M6 4 L20 12 L6 20 Z" fill="currentColor"/></svg>
+        <svg viewBox="0 0 24 24" class="ico ico-pause"><path d="M6 4 H10 V20 H6 Z M14 4 H18 V20 H14 Z" fill="currentColor"/></svg>
       </button>
       <button class="mtab-ctrl mtab-ctrl-stop" id="mtabStop" title="Stop" aria-label="Stop" disabled>
         <svg viewBox="0 0 24 24" class="ico"><rect x="6" y="6" width="12" height="12" fill="currentColor"/></svg>
       </button>
     </div>
-
     <button class="mtab" data-toggle="panelRight">
-      <svg viewBox="0 0 24 24" class="ico"><path d="M4 4 H20 V20 H4 Z M6 6 V18 H18 V6 Z" fill="currentColor" fill-rule="evenodd"/></svg>
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 4 H20 V20 H4 Z M6 6 V18 H18 V6 Z M8 9 L11 12 L8 15" fill="currentColor" fill-rule="evenodd"/></svg>
       <span>Console</span>
     </button>
   </nav>
 </main>
 
+<!-- Selezione blocco -->
 <div class="modal-overlay" id="picker" hidden>
   <div class="modal picker">
-    <div class="modal-header">
-      <span>Aggiungi blocco</span>
-      <button class="modal-close" id="pickerClose">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
-      </button>
-    </div>
+    <div class="modal-header"><span>Aggiungi blocco</span><button class="modal-close" data-close-modal="picker">×</button></div>
     <div class="picker-body">
-      <div class="picker-cat"><div class="picker-cat-title">Interazione</div><div class="picker-cat-items"><button class="pick" data-add="input">Input</button><button class="pick" data-add="output">Output</button></div></div>
-      <div class="picker-cat"><div class="picker-cat-title">Variabili</div><div class="picker-cat-items"><button class="pick" data-add="declare">Dichiara</button><button class="pick" data-add="assign">Assegna</button></div></div>
-      <div class="picker-cat"><div class="picker-cat-title">Selezione</div><div class="picker-cat-items"><button class="pick" data-add="if">If</button><button class="pick" data-add="else">Else</button></div></div>
-      <div class="picker-cat"><div class="picker-cat-title">Cicli</div><div class="picker-cat-items"><button class="pick" data-add="for">For</button><button class="pick" data-add="while">While</button><button class="pick" data-add="dowhile">Do-While</button><button class="pick" data-add="break">Break</button></div></div>
-      <div class="picker-cat"><div class="picker-cat-title">Utility</div><div class="picker-cat-items"><button class="pick" data-add="comment">Commento</button></div></div>
+      <div class="picker-cat"><div class="picker-cat-title">Input / Output</div><div class="picker-cat-items"><button class="pick pk-input" data-add="input">Input</button><button class="pick pk-output" data-add="output">Output</button></div></div>
+      <div class="picker-cat"><div class="picker-cat-title">Variabili</div><div class="picker-cat-items"><button class="pick pk-declare" data-add="declare">Declare</button><button class="pick pk-assign" data-add="assign">Assign</button></div></div>
+      <div class="picker-cat"><div class="picker-cat-title">Selezione e funzioni</div><div class="picker-cat-items"><button class="pick pk-if" data-add="if">If</button><button class="pick pk-call" data-add="call">Call</button></div></div>
+      <div class="picker-cat"><div class="picker-cat-title">Cicli</div><div class="picker-cat-items"><button class="pick pk-loop" data-add="while">While</button><button class="pick pk-loop" data-add="for">For</button><button class="pick pk-loop" data-add="dowhile">Do</button><button class="pick pk-loop" data-add="break">Break</button></div></div>
+      <div class="picker-cat"><div class="picker-cat-title">Altro</div><div class="picker-cat-items"><button class="pick pk-comment" data-add="comment">Commento</button><button class="pick" data-add="paste" id="pickPaste" disabled>Incolla blocco</button></div></div>
     </div>
   </div>
 </div>
 
+<!-- Tipo variabile -->
 <div class="modal-overlay" id="typeModal" hidden>
   <div class="modal type-modal">
-    <div class="modal-header">
-      <span>Scegli il tipo</span>
-      <button class="modal-close" id="typeClose">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
-      </button>
-    </div>
+    <div class="modal-header"><span>Tipo di dato</span><button class="modal-close" id="typeClose">×</button></div>
     <div class="modal-body type-modal-body">
-      <p class="type-hint">Seleziona il tipo della variabile da dichiarare:</p>
       <div class="type-grid">
-        <button class="type-btn" data-type="Integer"><strong>Integer</strong><span>Numeri interi</span></button>
-        <button class="type-btn" data-type="Real"><strong>Real</strong><span>Numeri decimali</span></button>
-        <button class="type-btn" data-type="String"><strong>String</strong><span>Testo</span></button>
+        <button class="type-btn" data-type="Integer"><strong>Integer</strong><span>Numeri interi: 42, -7</span></button>
+        <button class="type-btn" data-type="Real"><strong>Real</strong><span>Numeri decimali: 3.14</span></button>
+        <button class="type-btn" data-type="String"><strong>String</strong><span>Testo: "ciao"</span></button>
         <button class="type-btn" data-type="Boolean"><strong>Boolean</strong><span>true / false</span></button>
-        <button class="type-btn" data-type="Character"><strong>Character</strong><span>Singolo carattere</span></button>
+        <button class="type-btn" data-type="Character"><strong>Character</strong><span>Un carattere: 'A'</span></button>
       </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-cancel" id="typeCancel">Annulla</button>
+      <p class="type-hint">Per un array scrivi la dimensione tra parentesi quadre, es. <code>voti[10]</code>.</p>
     </div>
   </div>
 </div>
 
+<!-- For -->
 <div class="modal-overlay" id="forModal" hidden>
   <div class="modal for-modal">
-    <div class="modal-header">
-      <span>Struttura ripetitiva 'Per'</span>
-      <button class="modal-close" id="forClose">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
-      </button>
-    </div>
+    <div class="modal-header"><span>Ciclo For</span><button class="modal-close" id="forClose">×</button></div>
     <div class="modal-body for-modal-body">
-      <p class="for-hint">La struttura ripetitiva 'Per' incrementa una variabile considerando un intervallo di valori (ciclo enumerativo).</p>
-      <label class="for-label">Variabile:</label>
-      <input id="forVar" type="text" placeholder="i" autocomplete="off" spellcheck="false" />
+      <p class="for-hint">Il ciclo For ripete il corpo assegnando alla variabile (già dichiarata con Declare) tutti i valori dell'intervallo.</p>
+      <label class="for-label" for="forVar">Variabile</label>
+      <input id="forVar" type="text" placeholder="i" autocomplete="off" spellcheck="false" list="forVarList" />
+      <datalist id="forVarList"></datalist>
       <div class="for-row">
-        <div class="for-col">
-          <label class="for-label">Valore iniziale:</label>
-          <input id="forStart" type="text" placeholder="0" autocomplete="off" spellcheck="false" />
-        </div>
-        <div class="for-col">
-          <label class="for-label">Valore finale:</label>
-          <input id="forEnd" type="text" placeholder="10" autocomplete="off" spellcheck="false" />
-        </div>
+        <div class="for-col"><label class="for-label" for="forStart">Valore iniziale</label><input id="forStart" type="text" placeholder="1" autocomplete="off" spellcheck="false" /></div>
+        <div class="for-col"><label class="for-label" for="forEnd">Valore finale</label><input id="forEnd" type="text" placeholder="10" autocomplete="off" spellcheck="false" /></div>
       </div>
       <div class="for-row">
         <div class="for-col">
-          <label class="for-label">Direzione:</label>
+          <label class="for-label">Direzione</label>
           <div class="for-radio-group">
-            <label class="for-radio"><input type="radio" name="forDirection" value="inc" checked /><span>Incrementa</span></label>
-            <label class="for-radio"><input type="radio" name="forDirection" value="dec" /><span>Decrementa</span></label>
+            <label class="for-radio"><input type="radio" name="forDirection" value="inc" checked /><span>Crescente</span></label>
+            <label class="for-radio"><input type="radio" name="forDirection" value="dec" /><span>Decrescente</span></label>
           </div>
         </div>
+        <div class="for-col"><label class="for-label" for="forStep">Passo</label><input id="forStep" type="text" value="1" autocomplete="off" /></div>
+      </div>
+      <label class="chk for-auto"><input type="checkbox" id="forAutoDeclare" checked /> Dichiara automaticamente la variabile se manca</label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" id="forCancel">Annulla</button>
+      <button class="btn btn-ok" id="forOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Funzione -->
+<div class="modal-overlay" id="funcModal" hidden>
+  <div class="modal func-modal">
+    <div class="modal-header"><span id="funcModalTitle">Nuova funzione</span><button class="modal-close" id="funcClose">×</button></div>
+    <div class="modal-body">
+      <label for="funcName">Nome</label>
+      <input id="funcName" type="text" placeholder="es. Fattoriale" autocomplete="off" spellcheck="false" />
+      <label>Parametri <span class="lbl-sub">(gli array sono passati per riferimento)</span></label>
+      <div id="funcParams" class="param-list"></div>
+      <button class="mini-btn" id="funcAddParam" type="button">+ Aggiungi parametro</button>
+      <div class="for-row">
         <div class="for-col">
-          <label class="for-label">Valore passo:</label>
-          <input id="forStep" type="number" value="1" min="1" step="1" />
+          <label for="funcRetType">Tipo restituito</label>
+          <select id="funcRetType">
+            <option value="None">Nessuno (procedura)</option>
+            <option>Integer</option><option>Real</option><option>String</option><option>Boolean</option><option>Character</option>
+          </select>
+        </div>
+        <div class="for-col">
+          <label for="funcRetVar">Variabile di ritorno</label>
+          <input id="funcRetVar" type="text" placeholder="risultato" autocomplete="off" spellcheck="false" />
         </div>
       </div>
+      <p class="type-hint" id="funcRetHint">La variabile di ritorno va dichiarata con un blocco Declare dentro la funzione: verrà creato automaticamente.</p>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ok" id="forOk">OK</button>
-      <button class="btn btn-cancel" id="forCancel">Annulla</button>
+      <button class="btn btn-danger" id="funcDelete">Elimina</button>
+      <span class="grow"></span>
+      <button class="btn btn-cancel" id="funcCancel">Annulla</button>
+      <button class="btn btn-ok" id="funcOk">OK</button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="varModal" hidden>
-  <div class="modal">
-    <div class="modal-header">
-      <span>Nuova variabile</span>
-      <button class="modal-close" id="varClose">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <label>Nome</label>
-      <input id="varName" type="text" placeholder="es. contatore" autocomplete="off" />
-      <label>Tipo</label>
-      <select id="varType">
-        <option value="Integer">Integer</option>
-        <option value="Real">Real</option>
-        <option value="String">String</option>
-        <option value="Boolean">Boolean</option>
-        <option value="Character">Character</option>
-      </select>
-      <label>Valore iniziale</label>
-      <input id="varValue" type="text" placeholder="0" autocomplete="off" />
+<!-- Codice -->
+<div class="modal-overlay" id="codeModal" hidden>
+  <div class="modal wide code-modal">
+    <div class="modal-header"><span>Codice generato</span><button class="modal-close" data-close-modal="codeModal">×</button></div>
+    <div class="code-tabs" id="codeTabs" role="tablist"></div>
+    <div class="modal-body code-body">
+      <pre id="codeOutput" class="code-preview"></pre>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-cancel" id="varCancel">Annulla</button>
-      <button class="btn btn-ok" id="varOk">Crea</button>
+      <span class="code-note" id="codeNote"></span>
+      <span class="grow"></span>
+      <button class="btn btn-cancel" id="codeCopy">Copia</button>
+      <button class="btn btn-ok" id="codeDownload">Scarica</button>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay" id="cModal" hidden>
+<!-- Esempi -->
+<div class="modal-overlay" id="examplesModal" hidden>
   <div class="modal wide">
-    <div class="modal-header">
-      <span>Codice generato</span>
-      <button class="modal-close" id="cClose">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <pre id="cOutput" class="code-preview"></pre>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-cancel" id="cCopy">Copia</button>
-      <button class="btn btn-cancel" id="cDownload">Scarica</button>
-      <button class="btn btn-ok" id="cCloseBtn">Chiudi</button>
+    <div class="modal-header"><span>Esempi pronti</span><button class="modal-close" data-close-modal="examplesModal">×</button></div>
+    <div class="modal-body"><div class="ex-grid" id="exGrid"></div></div>
+  </div>
+</div>
+
+<!-- Guida -->
+<div class="modal-overlay" id="helpModal" hidden>
+  <div class="modal wide help-modal">
+    <div class="modal-header"><span>Guida alla sintassi (compatibile Flowgorithm)</span><button class="modal-close" data-close-modal="helpModal">×</button></div>
+    <div class="modal-body help-body">
+      <h3>Blocchi</h3>
+      <table>
+        <tr><td><b>Declare</b></td><td><code>a, b, voti[10]</code> + tipo (Integer, Real, String, Boolean, Character)</td></tr>
+        <tr><td><b>Assign</b></td><td><code>x = espressione</code> · <code>v[i] = 0</code></td></tr>
+        <tr><td><b>Input</b></td><td><code>nome</code> · <code>v[i]</code></td></tr>
+        <tr><td><b>Output</b></td><td><code>"Totale: " &amp; tot</code> (opzione “a capo”)</td></tr>
+        <tr><td><b>If</b></td><td><code>x &gt; 0 and x &lt;&gt; 5</code> → rami Vero / Falso</td></tr>
+        <tr><td><b>While</b></td><td>ripete finché la condizione è vera</td></tr>
+        <tr><td><b>For</b></td><td><code>i = 1 to 10 step 1</code>, crescente o decrescente</td></tr>
+        <tr><td><b>Do</b></td><td>esegue il corpo almeno una volta, poi ripete finché la condizione è vera</td></tr>
+        <tr><td><b>Call</b></td><td><code>Saluta("Anna")</code> · procedure grafiche</td></tr>
+        <tr><td><b>Break</b></td><td>esce dal ciclo (estensione FlowLab)</td></tr>
+      </table>
+      <h3>Operatori</h3>
+      <table>
+        <tr><td>Aritmetici</td><td><code>+</code> <code>-</code> <code>*</code> <code>/</code> <code>%</code> o <code>mod</code> <code>^</code> (potenza)</td></tr>
+        <tr><td>Confronto</td><td><code>=</code> o <code>==</code> · <code>&lt;&gt;</code> o <code>!=</code> · <code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code></td></tr>
+        <tr><td>Logici</td><td><code>and</code> / <code>&amp;&amp;</code> · <code>or</code> / <code>||</code> · <code>not</code> / <code>!</code></td></tr>
+        <tr><td>Stringhe</td><td><code>&amp;</code> concatena qualsiasi valore: <code>"n = " &amp; n</code></td></tr>
+        <tr><td>Precedenza</td><td>unari → <code>^</code> → <code>* / mod</code> → <code>+ -</code> → <code>&amp;</code> → confronti → <code>and</code> → <code>or</code></td></tr>
+      </table>
+      <h3>Funzioni intrinseche</h3>
+      <table>
+        <tr><td>Matematiche</td><td><code>Abs</code> <code>Sqrt</code> <code>Int</code> <code>Sgn</code> <code>Log</code> <code>Log10</code> <code>Sin</code> <code>Cos</code> <code>Tan</code> <code>Arcsin</code> <code>Arccos</code> <code>Arctan</code> <code>Random(n)</code> <code>Pi</code></td></tr>
+        <tr><td>Stringhe</td><td><code>Len(s)</code> <code>Char(s, i)</code> <code>Mid(s, inizio, quanti)</code> <code>ToUpper</code> <code>ToLower</code> <code>Trim</code></td></tr>
+        <tr><td>Conversioni</td><td><code>ToInteger</code> <code>ToReal</code> <code>ToString</code> <code>ToChar(codice)</code> <code>ToCode(c)</code> <code>ToFixed(x, cifre)</code></td></tr>
+        <tr><td>Array</td><td><code>Size(v)</code> — gli indici partono da 0</td></tr>
+        <tr><td>Extra</td><td><code>Min</code> <code>Max</code> <code>Pow</code> <code>Round</code> <code>Floor</code> <code>Ceil</code> <code>Exp</code> <code>IsNumber</code></td></tr>
+      </table>
+      <h3>Grafica (blocco Call)</h3>
+      <table>
+        <tr><td>Grafici</td><td><code>Plot(x, y)</code> <code>PlotBar("A", 5)</code> <code>ClearPlot()</code></td></tr>
+        <tr><td>Disegno</td><td><code>ClearCanvas()</code> <code>SetColor("red")</code> <code>SetFill("#ff0")</code> <code>SetLineWidth(3)</code> <code>DrawLine(x1, y1, x2, y2)</code> <code>DrawRect(x, y, l, h)</code> <code>FillRect</code> <code>DrawCircle(x, y, r)</code> <code>FillCircle</code> <code>DrawText(x, y, testo)</code> <code>DrawPoint(x, y)</code></td></tr>
+        <tr><td>Tartaruga</td><td><code>Forward(n)</code> <code>Back(n)</code> <code>TurnRight(gradi)</code> <code>TurnLeft(gradi)</code> <code>PenUp()</code> <code>PenDown()</code> <code>Home()</code> <code>SetPosition(x, y)</code> <code>SetHeading(gradi)</code></td></tr>
+        <tr><td>Tempo</td><td><code>Wait(ms)</code></td></tr>
+      </table>
+      <h3>Scorciatoie</h3>
+      <table>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Invio</kbd></td><td>Esegui / pausa</td></tr>
+        <tr><td><kbd>F10</kbd></td><td>Passo successivo</td></tr>
+        <tr><td><kbd>F9</kbd></td><td>Breakpoint sul blocco selezionato</td></tr>
+        <tr><td><kbd>Canc</kbd></td><td>Elimina il blocco selezionato</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> / <kbd>D</kbd></td><td>Copia / incolla dopo / duplica blocco</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd></td><td>Annulla / ripeti</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>O</kbd></td><td>Salva / apri</td></tr>
+      </table>
     </div>
   </div>
+</div>
+
+<div class="ctx-menu" id="ctxMenu" hidden>
+  <button data-ctx="bp">Breakpoint (F9)</button>
+  <button data-ctx="copy">Copia</button>
+  <button data-ctx="dup">Duplica</button>
+  <button data-ctx="paste">Incolla dopo</button>
+  <button data-ctx="del" class="danger">Elimina</button>
 </div>
 
 <div class="toast" id="toast" hidden></div>
 
-<script src="app.js"></script>
+<script src="engine.js?v=25"></script>
+<script src="codegen.js?v=25"></script>
+<script src="fprg.js?v=25"></script>
+<script src="examples.js?v=25"></script>
+<script src="charts.js?v=25"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>
