@@ -234,7 +234,7 @@ body[data-run="running"] #btnRun { background: #f59e0b; border-color: #f59e0b; c
   padding: 10px 12px; background: transparent; border: none; color: var(--text);
   font-size: 14px; font-weight: 600; text-align: left; border-radius: 8px; min-height: 44px;
 }
-.mm-item > span:first-child { width: 22px; text-align: center; color: var(--text-dim); font-size: 15px; }
+.mm-item .ico { width: 20px; height: 20px; color: var(--text-dim); }
 .mm-item:hover, .mm-item:active { background: var(--bg-hover); }
 .mm-divider { height: 1px; background: var(--border); margin: 6px 4px; }
 .mm-speed { padding: 10px 12px 6px; display: flex; flex-direction: column; gap: 6px; }
