@@ -1698,7 +1698,7 @@ function toggleTheme(){
   const t = currentTheme() === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', t);
   try{ localStorage.setItem('flowlab.theme', t); }catch(e){}
-  document.querySelector('meta[name="theme-color"]').setAttribute('content', t === 'dark' ? '#0f172a' : '#1a237e');
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', t === 'dark' ? '#0f172a' : '#0A6EFF');
   FL.Charts.scheduleRedraw();
 }
 function toggleFullscreen(){

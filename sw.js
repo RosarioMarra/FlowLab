@@ -6,7 +6,7 @@
    - Altri asset: cache-first con fallback network
    ============================================================ */
 
-const CACHE_NAME = 'flowlab-v25.0.1';
+const CACHE_NAME = 'flowlab-v25.1.0';
 const RUNTIME_CACHE = 'flowlab-runtime';
 
 /* File da pre-cachare all'installazione */
