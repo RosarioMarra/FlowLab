@@ -426,7 +426,7 @@ C.assign = (a, ctx) => {
     const parts = concatParts(a.expr, ctx);
     if(parts.length === 1 && isStr(typeOf(parts[0], ctx)) && typeOf(parts[0], ctx) === 'String') return ['strcpy(' + dest + ', ' + C.E(a.expr, ctx, 0) + ');'];
     const pf = cPrintfParts(parts, ctx);
-    return ['{ char tmp_[256]; sprintf(tmp_, "' + pf.fmt + '"' + (pf.args.length ? ', ' + pf.args.join(', ') : '') + '); strcpy(' + dest + ', tmp_); }'];
+    return ['{ char tmp_[256]; snprintf(tmp_, sizeof tmp_, "' + pf.fmt + '"' + (pf.args.length ? ', ' + pf.args.join(', ') : '') + '); strcpy(' + dest + ', tmp_); }'];
   }
   return [dest + ' = ' + C.E(a.expr, ctx, 0) + ';'];
 };
@@ -461,28 +461,51 @@ C.wrap = (bodies, out) => {
     if(t === 'String') return 'char ' + p.name + (p.array ? '[][256]' : '[]') + sz;
     return cType(t) + ' ' + p.name + (p.array ? '[]' : '') + sz;
   };
-  out.push('/* Generato da FlowLab — C (C99) */');
-  out.push('#include <stdio.h>', '#include <stdlib.h>', '#include <string.h>', '#include <stdbool.h>', '#include <ctype.h>', '#include <math.h>', '');
-  out.push('/* funzioni di supporto per le conversioni in stringa */');
-  out.push('static char fl_buf[16][64]; static int fl_bi = 0;');
-  out.push('char* fl_str_i(int v) { char* b = fl_buf[fl_bi++ % 16]; sprintf(b, "%d", v); return b; }');
-  out.push('char* fl_str_d(double v) { char* b = fl_buf[fl_bi++ % 16]; sprintf(b, "%g", v); return b; }');
-  out.push('char* fl_str_c(char v) { char* b = fl_buf[fl_bi++ % 16]; b[0] = v; b[1] = 0; return b; }');
-  out.push('char* fl_fixed(double v, int d) { char* b = fl_buf[fl_bi++ % 16]; sprintf(b, "%.*f", d, v); return b; }');
-  out.push('char* fl_upper(const char* s) { char* b = fl_buf[fl_bi++ % 16]; int i = 0; for (; s[i] && i < 63; i++) b[i] = toupper((unsigned char) s[i]); b[i] = 0; return b; }');
-  out.push('char* fl_lower(const char* s) { char* b = fl_buf[fl_bi++ % 16]; int i = 0; for (; s[i] && i < 63; i++) b[i] = tolower((unsigned char) s[i]); b[i] = 0; return b; }');
-  out.push('char* fl_mid(const char* s, int st, int n) { char* b = fl_buf[fl_bi++ % 16]; int L = (int) strlen(s), i = 0; for (; i < n && st + i < L && i < 63; i++) b[i] = s[st + i]; b[i] = 0; return b; }');
-  out.push('');
+  /* prima il codice, poi solo le librerie e le funzioni di supporto davvero usate */
+  const code = [];
   const others = bodies.filter(b => !b.isMain);
-  others.forEach(b => out.push(cSig(b.f, false, ret, par) + ';'));
-  if(others.length) out.push('');
+  others.forEach(b => code.push(cSig(b.f, false, ret, par) + ';'));
+  if(others.length) code.push('');
   bodies.forEach(b => {
-    out.push(cSig(b.f, b.isMain, ret, par) + ' {');
-    if(b.isMain && bodies.length) out.push('    srand((unsigned) time(NULL));');
-    b.lines.forEach(l => out.push(l));
-    out.push('}', '');
+    code.push(cSig(b.f, b.isMain, ret, par) + ' {');
+    b.lines.forEach(l => code.push(l));
+    code.push('}', '');
   });
-  if(out.some(l => l.includes('srand('))) out.splice(out.indexOf('#include <math.h>') + 1, 0, '#include <time.h>');
+  let text = code.join('\n');
+  const uses = re => re.test(text);
+  if(uses(/\brand\(/)){
+    const i = code.findIndex(l => /^int main\(/.test(l));
+    code.splice(i + 1, 0, '    srand((unsigned) time(NULL));');
+  }
+  const HELPERS = {
+    fl_str_i:'char* fl_str_i(int v) { char* b = fl_buf[fl_bi++ % 16]; sprintf(b, "%d", v); return b; }',
+    fl_str_d:'char* fl_str_d(double v) { char* b = fl_buf[fl_bi++ % 16]; sprintf(b, "%g", v); return b; }',
+    fl_str_c:'char* fl_str_c(char v) { char* b = fl_buf[fl_bi++ % 16]; b[0] = v; b[1] = 0; return b; }',
+    fl_fixed:'char* fl_fixed(double v, int d) { char* b = fl_buf[fl_bi++ % 16]; sprintf(b, "%.*f", d, v); return b; }',
+    fl_upper:'char* fl_upper(const char* s) { char* b = fl_buf[fl_bi++ % 16]; int i = 0; for (; s[i] && i < 63; i++) b[i] = toupper((unsigned char) s[i]); b[i] = 0; return b; }',
+    fl_lower:'char* fl_lower(const char* s) { char* b = fl_buf[fl_bi++ % 16]; int i = 0; for (; s[i] && i < 63; i++) b[i] = tolower((unsigned char) s[i]); b[i] = 0; return b; }',
+    fl_mid:'char* fl_mid(const char* s, int st, int n) { char* b = fl_buf[fl_bi++ % 16]; int L = (int) strlen(s), i = 0; for (; i < n && st + i < L && i < 63; i++) b[i] = s[st + i]; b[i] = 0; return b; }'
+  };
+  const helpers = Object.keys(HELPERS).filter(h => uses(new RegExp('\\b' + h + '\\(')));
+  const all = code.join('\n') + '\n' + helpers.map(h => HELPERS[h]).join('\n');
+  const has = re => re.test(all);
+  const inc = [];
+  if(has(/\b(printf|scanf|sprintf|snprintf)\(/)) inc.push('stdio.h');
+  if(has(/\b(rand|srand|abs|atoi|atof)\(|RAND_MAX/)) inc.push('stdlib.h');
+  if(has(/\b(strcpy|strlen|strcmp)\(/)) inc.push('string.h');
+  if(has(/\b(bool|true|false)\b/)) inc.push('stdbool.h');
+  if(has(/\b(toupper|tolower)\(/)) inc.push('ctype.h');
+  if(has(/\b(pow|sqrt|fabs|fmod|sin|cos|tan|asin|acos|atan|log|log10|exp|floor|ceil|round)\(|M_PI/)) inc.push('math.h');
+  if(has(/\btime\(/)) inc.push('time.h');
+  inc.forEach(h => out.push('#include <' + h + '>'));
+  if(inc.length) out.push('');
+  if(helpers.length){
+    out.push('static char fl_buf[16][64];', 'static int fl_bi = 0;');
+    helpers.forEach(h => out.push(HELPERS[h]));
+    out.push('');
+  }
+  code.forEach(l => out.push(l));
+  while(out.length && out[out.length - 1] === '') out.pop();
 };
 
 /* ---------- C++ ---------- */
