@@ -1159,7 +1159,6 @@ async function startRun(stepMode){
   run.runner = r;
   if(stepMode) r.paused = true;
   setRunStatus(stepMode ? 'paused' : 'running');
-  if(!stepMode && isMobile()) {/* lascia il canvas visibile */}
   const t0 = performance.now();
   let ok = true;
   try{
@@ -1878,6 +1877,13 @@ function init(){
   try{ const p = localStorage.getItem('flowlab.pane'); if(p && !isMobile()) showPane(p); }catch(e){}
   setRunStatus('idle');
   setTimeout(() => { layoutAll(); convergeLayout(); }, 250);
+  /* scorciatoie dell'app installata (manifest) */
+  const action = new URLSearchParams(location.search).get('action');
+  if(action){
+    history.replaceState(null, '', location.pathname);
+    if(action === 'new') newProject();
+    else if(action === 'examples') $('examplesModal').hidden = false;
+  }
   (async () => {
     const stored = await loadHandleFromDB(FILE_HANDLE_KEY);
     if(stored){ try{ if(await stored.queryPermission({ mode:'readwrite' }) === 'granted'){ state.fileHandle = stored; } }catch(e){} }

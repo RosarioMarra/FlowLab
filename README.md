@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Immagini/icon-192.png" alt="FlowLab" width="120" height="120" />
+<img src="immagini/icone/icon-512.png" alt="FlowLab" width="120" height="120" />
 
 # FlowLab
 
@@ -108,7 +108,7 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 
 | Desktop | Mobile |
 |---|---|
-| ![Desktop](Immagini/screenshot-desktop.png) | ![Mobile](Immagini/screenshot-mobile.png) |
+| ![Desktop](immagini/screenshot/desktop.png) | ![Mobile](immagini/screenshot/mobile.png) |
 
 ---
 
@@ -289,17 +289,21 @@ I file della versione 24 (con `nodes` e `varDefs`) vengono convertiti automatica
 
 ```
 FlowLab/
-├── index.html      # Interfaccia
-├── style.css       # Stili (tema chiaro/scuro, responsive)
-├── engine.js       # Lexer, parser, valutatore tipizzato, interprete
-├── codegen.js      # Generatori Python, C, C++, Java, C#, JavaScript, pseudocodice
-├── fprg.js         # Import/export formato Flowgorithm
-├── charts.js       # Grafici, array animati, canvas di disegno e tartaruga
-├── examples.js     # Libreria di esempi
-├── app.js          # Editor, layout, esecuzione, file, UI
-├── manifest.json   # Manifest PWA
-├── sw.js           # Service Worker (offline)
-└── Immagini/       # Icone e screenshot
+├── index.html              # Interfaccia
+├── manifest.json           # Manifest PWA (icone, scorciatoie, screenshot)
+├── sw.js                   # Service Worker (offline)
+├── css/
+│   └── style.css           # Stili (tema chiaro/scuro, responsive)
+├── js/
+│   ├── engine.js           # Lexer, parser, valutatore tipizzato, interprete
+│   ├── codegen.js          # Generatori Python, C, C++, Java, C#, JavaScript, pseudocodice
+│   ├── fprg.js             # Import/export formato Flowgorithm
+│   ├── charts.js           # Grafici, array animati, disegno e tartaruga
+│   ├── examples.js         # Libreria di esempi
+│   └── app.js              # Editor, layout, esecuzione, file, interfaccia
+└── immagini/
+    ├── icone/              # favicon, icone app (normali e maskable), icona iOS
+    └── screenshot/         # desktop.png, mobile.png
 ```
 
 ## Architettura tecnica

@@ -218,10 +218,6 @@ function redraw(){
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
 function toggleSeries(k){ if(S.hidden.has(k)) S.hidden.delete(k); else S.hidden.add(k); scheduleRedraw(); }
 function setVisible(v){ S.visible = v; if(v) scheduleRedraw(); }
-function exportChartsPNG(){
-  const cv = S.els.varCanvas;
-  return cv.toDataURL('image/png');
-}
 
 /* ---------- Disegno (canvas 400×400 + tartaruga) ---------- */
 const G = { size:400, color:'#111827', fill:'#111827', lw:2, tx:200, ty:200, th:-90, pen:true, cmds:0, ctx:null, cv:null, tcv:null };
@@ -299,7 +295,6 @@ function gfx(name, a){
   return 'draw';
 }
 function gfxPNG(){ return G.cv.toDataURL('image/png'); }
-function gfxUsed(){ return G.cmds > 0; }
 
-FL.Charts = { init, reset, trackAssign, setFrame, plot, plotBar, clearPlot, redraw, scheduleRedraw, toggleSeries, setVisible, gfx, gfxReset, gfxPNG, gfxUsed, exportChartsPNG, drawLines, drawBars };
+FL.Charts = { init, reset, trackAssign, setFrame, plot, plotBar, clearPlot, redraw, scheduleRedraw, toggleSeries, setVisible, gfx, gfxReset, gfxPNG };
 })();

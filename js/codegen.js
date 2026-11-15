@@ -57,7 +57,6 @@ function typeOf(a, ctx){
 function isStr(t){ return t === 'String' || t === 'Character'; }
 
 const PREC = { or:1, and:2, '==':3, '!=':3, '<':3, '<=':3, '>':3, '>=':3, '&':4, '+':5, '-':5, '*':6, '/':6, '%':6, '^':7 };
-function precOf(a){ return a.t === 'bin' ? PREC[a.op] : 9; }
 
 /* flatten di concatenazione & (e + tra stringhe) */
 function concatParts(a, ctx){

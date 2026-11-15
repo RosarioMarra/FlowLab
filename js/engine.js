@@ -26,7 +26,6 @@ class FLError extends Error {
 const STOP = { stop: true };
 
 /* ---------- Lexer ---------- */
-const OPS3 = [];
 const OPS2 = ['==', '!=', '<>', '<=', '>=', '&&', '||', '++', '--', '+=', '-=', '*=', '/='];
 const OPS1 = ['=', '<', '>', '+', '-', '*', '/', '%', '^', '&', '!', '(', ')', '[', ']', ','];
 const WORD_OPS = { and:'and', or:'or', not:'not', mod:'%' };
@@ -699,7 +698,6 @@ class Runner {
         if(!text) throw new FLError('Declare: indica il nome della variabile');
         const items = parseDeclare(text);
         for(const d of items){
-          if(INTRINSICS[d.name.toLowerCase()] && false) continue;
           if(d.size){
             const size = needNum(await this.ev(d.size, fr), 'dimensione');
             if(!Number.isInteger(size) || size <= 0) throw new FLError('La dimensione dell\'array "' + d.name + '" deve essere un intero positivo');
