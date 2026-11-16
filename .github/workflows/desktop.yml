@@ -4,6 +4,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      versione:
+        description: 'Versione da pubblicare (es. v25.0.0)'
+        required: true
+        default: 'v25.0.0'
 
 permissions:
   contents: write
@@ -45,8 +50,9 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          name: FlowLab ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
+          name: FlowLab ${{ inputs.versione || github.ref_name }}
+          tag_name: ${{ inputs.versione || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: pacchetti/*
           body: |
             **Windows**: scarica `FlowLab-Setup-Windows.exe` (installazione) oppure `FlowLab-Portable-Windows.exe` (senza installazione).

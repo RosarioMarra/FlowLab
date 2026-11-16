@@ -144,10 +144,7 @@ L'app non è firmata digitalmente, quindi Windows SmartScreen può mostrare *“
    ```
 
 ### Compilare le app desktop
-Le app vengono generate automaticamente da GitHub Actions (`.github/workflows/desktop.yml`) a ogni nuovo tag `v*`, ad esempio:
-```bash
-git tag v25.0.1 && git push origin v25.0.1
-```
+Le app vengono generate automaticamente da GitHub Actions (`.github/workflows/desktop.yml`): su GitHub apri **Actions → App desktop → Run workflow**, scrivi la versione (es. `v25.0.1`) e avvia. In alternativa basta pubblicare un tag `v*`.
 In locale: `npm install`, poi `npm start` per provare l'app oppure `npm run dist:win` / `npm run dist:mac`.
 
 ---
