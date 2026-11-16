@@ -1515,10 +1515,19 @@ async function newProject(){
   toast('Nuovo progetto');
 }
 function renameProject(){
-  const n = prompt('Nome del progetto:', state.name || 'programma');
-  if(n === null) return;
-  state.name = n.trim() || 'programma'; updateFileName(); markDirty(); scheduleSave();
+  const m = $('nameModal'), inp = $('nameInput');
+  inp.value = state.name || 'programma';
+  m.hidden = false;
+  setTimeout(() => { inp.focus(); inp.select(); }, 40);
 }
+function confirmRename(){
+  state.name = $('nameInput').value.trim() || 'programma';
+  $('nameModal').hidden = true;
+  updateFileName(); markDirty(); scheduleSave();
+}
+$('nameOk').addEventListener('click', confirmRename);
+$('nameCancel').addEventListener('click', () => { $('nameModal').hidden = true; });
+$('nameInput').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); confirmRename(); } });
 $('fileName').addEventListener('click', renameProject);
 
 /* ============================================================
@@ -1786,7 +1795,7 @@ $('ctHeat').addEventListener('click', () => {
 });
 $('btnClearConsole').addEventListener('click', cclear);
 document.querySelectorAll('[data-close-modal]').forEach(b => b.addEventListener('click', () => { $(b.dataset.closeModal).hidden = true; }));
-document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if(e.target === m && ['picker', 'codeModal', 'examplesModal', 'helpModal'].includes(m.id)) m.hidden = true; }));
+document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if(e.target === m && ['picker', 'codeModal', 'examplesModal', 'helpModal', 'nameModal'].includes(m.id)) m.hidden = true; }));
 
 document.querySelectorAll('.card[data-add]').forEach(c => c.addEventListener('click', () => {
   insertFromPalette(c.dataset.add, state.nodes.length - 1, null);

@@ -23,6 +23,7 @@ Un ambiente di programmazione visuale ispirato a Flowgorithm, completamente risc
 - [Funzionalità](#funzionalità)
 - [Screenshot](#screenshot)
 - [Demo](#demo)
+- [Download](#download)
 - [Installazione](#installazione)
 - [Come si usa](#come-si-usa)
 - [Sintassi del linguaggio](#sintassi-del-linguaggio)
@@ -117,6 +118,37 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 > **Demo live**: [https://rosariomarra.github.io/FlowLab/](https://rosariomarra.github.io/FlowLab/)
 
 
+
+---
+
+## Download
+
+| Sistema | File | |
+|---|---|---|
+| **Windows 10/11** | Installazione | [⬇ FlowLab-Setup-Windows.exe](https://github.com/RosarioMarra/FlowLab/releases/latest/download/FlowLab-Setup-Windows.exe) |
+| **Windows 10/11** | Portable (senza installazione) | [⬇ FlowLab-Portable-Windows.exe](https://github.com/RosarioMarra/FlowLab/releases/latest/download/FlowLab-Portable-Windows.exe) |
+| **macOS 11+** (chip Apple e Intel) | Immagine disco | [⬇ FlowLab-macOS.dmg](https://github.com/RosarioMarra/FlowLab/releases/latest/download/FlowLab-macOS.dmg) |
+| **Qualsiasi dispositivo** | App web / PWA | [Apri FlowLab nel browser](https://rosariomarra.github.io/FlowLab/) |
+
+Tutte le versioni sono nella pagina [Releases](https://github.com/RosarioMarra/FlowLab/releases).
+
+### Primo avvio su Windows
+L'app non è firmata digitalmente, quindi Windows SmartScreen può mostrare *“Windows ha protetto il PC”*: clicca **Ulteriori informazioni → Esegui comunque**.
+
+### Primo avvio su macOS
+1. Apri `FlowLab-macOS.dmg` e trascina **FlowLab** nella cartella **Applicazioni**.
+2. Al primo avvio macOS avvisa che lo sviluppatore non è verificato: apri **Impostazioni di Sistema → Privacy e sicurezza** e premi **Apri comunque** (su macOS 14 o precedenti basta *tasto destro sull'app → Apri*).
+3. Se compare il messaggio *“FlowLab è danneggiata”*, apri il Terminale ed esegui:
+   ```bash
+   xattr -cr /Applications/FlowLab.app
+   ```
+
+### Compilare le app desktop
+Le app vengono generate automaticamente da GitHub Actions (`.github/workflows/desktop.yml`) a ogni nuovo tag `v*`, ad esempio:
+```bash
+git tag v25.0.1 && git push origin v25.0.1
+```
+In locale: `npm install`, poi `npm start` per provare l'app oppure `npm run dist:win` / `npm run dist:mac`.
 
 ---
 
@@ -292,6 +324,9 @@ FlowLab/
 ├── index.html              # Interfaccia
 ├── manifest.json           # Manifest PWA (icone, scorciatoie, screenshot)
 ├── sw.js                   # Service Worker (offline)
+├── package.json            # Configurazione app desktop (Electron)
+├── desktop/                # Avvio desktop e icone Windows/macOS
+├── .github/workflows/      # Compilazione automatica .exe e .dmg
 ├── css/
 │   └── style.css           # Stili (tema chiaro/scuro, responsive)
 ├── js/

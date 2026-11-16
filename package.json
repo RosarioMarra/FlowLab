@@ -1,0 +1,85 @@
+{
+  "name": "flowlab",
+  "productName": "FlowLab",
+  "version": "25.0.0",
+  "description": "Editor di flowchart con sintassi Flowgorithm",
+  "author": "Rosario Marra",
+  "license": "UNLICENSED",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RosarioMarra/FlowLab.git"
+  },
+  "main": "desktop/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.rosariomarra.flowlab",
+    "productName": "FlowLab",
+    "copyright": "© Rosario Marra",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "manifest.json",
+      "css/**",
+      "js/**",
+      "immagini/icone/**",
+      "desktop/main.js",
+      "desktop/icone/**"
+    ],
+    "afterPack": "desktop/firma-mac.js",
+    "win": {
+      "icon": "desktop/icone/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "FlowLab",
+      "artifactName": "FlowLab-Setup-Windows.exe"
+    },
+    "portable": {
+      "artifactName": "FlowLab-Portable-Windows.exe"
+    },
+    "mac": {
+      "icon": "desktop/icone/icon-mac.png",
+      "category": "public.app-category.education",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "FlowLab-macOS.dmg",
+      "title": "FlowLab"
+    }
+  }
+}
