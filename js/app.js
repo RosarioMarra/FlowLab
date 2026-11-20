@@ -1439,13 +1439,25 @@ function loadAuto(){
 }
 
 function safeFileName(){ return (state.name || 'programma').replace(/[\\/:*?"<>|]+/g, '_'); }
-function downloadText(text, name, mime){
-  const blob = new Blob([text], { type:mime || 'text/plain' });
+/* app Android: il salvataggio passa dal sistema (window.AndroidBridge) */
+const IS_ANDROID_APP = !!window.AndroidBridge;
+if(IS_ANDROID_APP) document.documentElement.classList.add('android-app');
+function saveBlob(blob, name){
+  if(IS_ANDROID_APP){
+    const r = new FileReader();
+    r.onload = () => window.AndroidBridge.saveFile(name, String(r.result).split(',')[1] || '');
+    r.readAsDataURL(blob);
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function downloadDataURL(url, name){ const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+function downloadText(text, name, mime){ saveBlob(new Blob([text], { type:mime || 'text/plain' }), name); }
+function downloadDataURL(dataUrl, name){
+  if(IS_ANDROID_APP){ window.AndroidBridge.saveFile(name, dataUrl.split(',')[1] || ''); return; }
+  const a = document.createElement('a'); a.href = dataUrl; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
 
 async function writeHandle(h, text){
   const perm = await h.queryPermission({ mode:'readwrite' });
@@ -1471,7 +1483,7 @@ async function saveToFile(forceAs){
     }catch(err){ if(err.name === 'AbortError') return; }
   }
   downloadText(text, fileName, 'application/json');
-  markSaved(); saveAuto(); toast('Progetto scaricato: ' + fileName);
+  markSaved(); saveAuto(); if(!IS_ANDROID_APP) toast('Progetto scaricato: ' + fileName);
 }
 async function loadFromFile(){
   if(!(await confirmDiscard())) return;
@@ -1601,10 +1613,8 @@ function exportPNG(){
   });
   ctx.restore();
   cvs.toBlob(blob => {
-    const url = URL.createObjectURL(blob);
-    downloadDataURL(url, safeFileName() + (isMainFunc(curFunc()) ? '' : '-' + curFunc().name) + '.png');
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast('Immagine esportata');
+    saveBlob(blob, safeFileName() + (isMainFunc(curFunc()) ? '' : '-' + curFunc().name) + '.png');
+    if(!IS_ANDROID_APP) toast('Immagine esportata');
   }, 'image/png');
 }
 
@@ -1861,6 +1871,18 @@ window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer
 document.addEventListener('fullscreenchange', () => setTimeout(() => { clampPan(); applyTransform(); }, 100));
 window.addEventListener('beforeunload', e => { saveAuto(); if(state.dirty && state.fileHandle){ e.preventDefault(); e.returnValue = ''; } });
 
+/* tasto Indietro (app Android): chiude ciò che è aperto; false = esci dall'app */
+window.flBack = function(){
+  const open = document.querySelector('.modal-overlay:not([hidden])');
+  if(open){ open.hidden = true; state.insertAt = -1; state.insertMode = null; return true; }
+  if(!ctxMenu.hidden){ closeCtxMenu(); return true; }
+  if(!$('mobileMenu').hidden){ closeMobileMenu(); return true; }
+  if(!$('exportMenu').hidden){ $('exportMenu').hidden = true; return true; }
+  if(document.querySelector('.panel.open')){ closeAllPanels(); return true; }
+  if(run.status !== 'idle'){ stopRun(); return true; }
+  return false;
+};
+
 /* ============================================================
    Avvio
    ============================================================ */
@@ -1896,7 +1918,7 @@ function init(){
     const stored = await loadHandleFromDB(FILE_HANDLE_KEY);
     if(stored){ try{ if(await stored.queryPermission({ mode:'readwrite' }) === 'granted'){ state.fileHandle = stored; } }catch(e){} }
   })();
-  if('serviceWorker' in navigator && location.protocol !== 'file:'){
+  if('serviceWorker' in navigator && location.protocol !== 'file:' && !IS_ANDROID_APP){
     window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
   }
 }

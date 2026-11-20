@@ -128,6 +128,7 @@ A differenza di Flowgorithm (Windows-only), FlowLab funziona ovunque: **desktop,
 | **Windows 10/11** | Installazione | [⬇ FlowLab-Setup-Windows.exe](https://github.com/RosarioMarra/FlowLab/releases/latest/download/FlowLab-Setup-Windows.exe) |
 | **Windows 10/11** | Portable (senza installazione) | [⬇ FlowLab-Portable-Windows.exe](https://github.com/RosarioMarra/FlowLab/releases/latest/download/FlowLab-Portable-Windows.exe) |
 | **macOS 11+** (chip Apple e Intel) | Immagine disco | [⬇ FlowLab-macOS.dmg](https://github.com/RosarioMarra/FlowLab/releases/latest/download/FlowLab-macOS.dmg) |
+| **Android 7+** | App (APK, in attesa del Play Store) | [⬇ FlowLab-Android.apk](https://github.com/RosarioMarra/FlowLab/releases/latest/download/FlowLab-Android.apk) |
 | **Qualsiasi dispositivo** | App web / PWA | [Apri FlowLab nel browser](https://rosariomarra.github.io/FlowLab/) |
 
 Tutte le versioni sono nella pagina [Releases](https://github.com/RosarioMarra/FlowLab/releases).
@@ -142,6 +143,9 @@ L'app non è firmata digitalmente, quindi Windows SmartScreen può mostrare *“
    ```bash
    xattr -cr /Applications/FlowLab.app
    ```
+
+### App Android e Google Play
+L'app Android (cartella `android/`) contiene l'intera app web e funziona offline. Viene compilata dal workflow **Actions → App Android**, che può anche caricarla direttamente su Google Play. Testi, immagini e istruzioni per la pubblicazione sono nella cartella [`store/`](store/GUIDA-PLAY-STORE.md).
 
 ### Compilare le app desktop
 Le app vengono generate automaticamente da GitHub Actions (`.github/workflows/desktop.yml`): su GitHub apri **Actions → App desktop → Run workflow**, scrivi la versione (es. `v25.0.1`) e avvia. In alternativa basta pubblicare un tag `v*`.
@@ -323,6 +327,9 @@ FlowLab/
 ├── sw.js                   # Service Worker (offline)
 ├── package.json            # Configurazione app desktop (Electron)
 ├── desktop/                # Avvio desktop e icone Windows/macOS
+├── android/                # App Android (WebView offline)
+├── store/                  # Scheda Google Play: testi, grafica, guida
+├── privacy.html            # Informativa sulla privacy
 ├── .github/workflows/      # Compilazione automatica .exe e .dmg
 ├── css/
 │   └── style.css           # Stili (tema chiaro/scuro, responsive)

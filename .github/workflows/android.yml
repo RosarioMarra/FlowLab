@@ -1,0 +1,91 @@
+name: App Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      versione:
+        description: 'Versione (es. 25.0.0)'
+        required: true
+        default: '25.0.0'
+      canale:
+        description: 'Canale Google Play'
+        required: true
+        default: 'alpha'
+        type: choice
+        options: [internal, alpha, beta, production]
+      pubblica:
+        description: 'Carica su Google Play'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      VERSION_NAME: ${{ inputs.versione }}
+      VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Copia l'app web nel pacchetto
+        run: |
+          mkdir -p android/app/src/main/assets
+          cp -r index.html manifest.json css js immagini android/app/src/main/assets/
+
+      - name: Chiave di firma
+        if: env.HAS_KEY == 'true'
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+
+      - name: Compila
+        run: gradle -p android --no-daemon bundleRelease assembleRelease
+
+      - name: Prepara i file
+        run: |
+          mkdir out
+          cp android/app/build/outputs/bundle/release/app-release.aab out/FlowLab-Android.aab
+          cp android/app/build/outputs/apk/release/app-release*.apk out/FlowLab-Android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flowlab-android
+          path: out/*
+
+      - name: Allega alla release
+        if: env.HAS_KEY == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.versione }}
+          name: FlowLab v${{ inputs.versione }}
+          target_commitish: ${{ github.sha }}
+          files: out/*
+
+      - name: Carica su Google Play
+        if: env.HAS_KEY == 'true' && env.HAS_PLAY == 'true' && inputs.pubblica
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.rosariomarra.flowlab
+          releaseFiles: out/FlowLab-Android.aab
+          track: ${{ inputs.canale }}
+          status: completed
+
+      - name: Promemoria
+        if: env.HAS_KEY != 'true'
+        run: echo "::warning::App compilata SENZA firma: aggiungi i Secrets ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_PASSWORD (vedi store/GUIDA-PLAY-STORE.md)."

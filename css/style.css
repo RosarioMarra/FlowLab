@@ -841,3 +841,6 @@ body[data-run="running"] .plus, body[data-run="paused"] .plus { opacity: 0 !impo
   .mtab-ctrl { width: 34px; height: 34px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* app Android: lo schermo intero è gestito dal sistema */
+.android-app #btnFullscreen, .android-app .mm-item[data-action="fullscreen"] { display: none !important; }
