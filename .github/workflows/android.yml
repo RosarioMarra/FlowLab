@@ -88,4 +88,5 @@ jobs:
 
       - name: Promemoria
         if: env.HAS_KEY != 'true'
-        run: echo "::warning::App compilata SENZA firma: aggiungi i Secrets ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_PASSWORD (vedi store/GUIDA-PLAY-STORE.md)."
+        run: |
+          echo "::warning::App compilata SENZA firma - aggiungi i Secrets ANDROID_KEYSTORE_BASE64 e ANDROID_KEYSTORE_PASSWORD (vedi store/GUIDA-PLAY-STORE.md)."
